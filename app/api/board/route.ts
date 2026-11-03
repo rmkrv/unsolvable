@@ -1,0 +1,63 @@
+import { NextResponse } from "next/server";
+import { isSameOrigin, requireRequestUserId } from "@/lib/request-user";
+import { readTutorActions, readTutorBoard, saveTutorBoard } from "@/lib/tutor-store";
+
+export const dynamic = "force-dynamic";
+
+function authError(error: unknown) {
+  if (error instanceof Error && error.message === "AUTH_REQUIRED") {
+    return NextResponse.json({ error: "Sign in with ChatGPT to use the shared board." }, { status: 401 });
+  }
+  return null;
+}
+
+export async function GET(request: Request) {
+  try {
+    const userId = requireRequestUserId(request);
+    const board = await readTutorBoard(userId);
+    if (!board) return NextResponse.json({ board: null, actions: [] });
+
+    const after = Number(new URL(request.url).searchParams.get("after") || 0);
+    const actions = await readTutorActions(userId, board.boardId, Number.isFinite(after) ? after : 0);
+    return NextResponse.json({
+      board: {
+        boardId: board.boardId,
+        state: JSON.parse(board.stateJson),
+        eventVersion: board.eventVersion,
+        lastMcpAt: board.lastMcpAt,
+        updatedAt: board.updatedAt,
+      },
+      actions: actions.map((action) => ({ id: action.id, value: JSON.parse(action.actionJson) })),
+    });
+  } catch (error) {
+    return authError(error) ?? NextResponse.json({ error: "Could not read the shared board." }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  if (!isSameOrigin(request)) return NextResponse.json({ error: "Cross-origin write rejected." }, { status: 403 });
+  try {
+    const userId = requireRequestUserId(request);
+    const raw = await request.text();
+    if (raw.length > 1_800_000) return NextResponse.json({ error: "Board state is too large." }, { status: 413 });
+    const body = JSON.parse(raw || "{}");
+    if (typeof body.boardId !== "string" || !body.boardId || typeof body.state !== "object") {
+      return NextResponse.json({ error: "Invalid board state." }, { status: 400 });
+    }
+    const snapshotDataUrl =
+      typeof body.snapshotDataUrl === "string" &&
+      body.snapshotDataUrl.startsWith("data:image/png;base64,") &&
+      body.snapshotDataUrl.length <= 750_000
+        ? body.snapshotDataUrl
+        : null;
+    const result = await saveTutorBoard({
+      userId,
+      boardId: body.boardId.slice(0, 120),
+      stateJson: JSON.stringify(body.state),
+      snapshotDataUrl,
+    });
+    return NextResponse.json({ ok: true, ...result });
+  } catch (error) {
+    return authError(error) ?? NextResponse.json({ error: "Could not update the shared board." }, { status: 500 });
+  }
+}
