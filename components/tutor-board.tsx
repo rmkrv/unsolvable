@@ -47,7 +47,6 @@ type BridgeState = "connecting" | "ready" | "offline" | "thinking" | "drawing";
 type DrawingGesture = {
   tool: DrawingTool;
   color: string;
-  forceSquare: boolean;
   pageId: string;
   start: { x: number; y: number; pressure: number; t: number };
   current: { x: number; y: number; pressure: number; t: number };
@@ -75,10 +74,10 @@ const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut?: st
   { id: "pen", label: "Pen", icon: PenLine, shortcut: "Ctrl/⌘ P", ariaShortcut: "Control+P Meta+P" },
   { id: "highlighter", label: "Highlight", icon: Highlighter, shortcut: "Ctrl/⌘ H", ariaShortcut: "Control+H Meta+H" },
   { id: "eraser", label: "Eraser", icon: Eraser, shortcut: "Ctrl/⌘ E", ariaShortcut: "Control+E Meta+E" },
-  { id: "line", label: "Line", icon: Minus, shortcut: "Hold Ctrl/⌘ L", ariaShortcut: "Control+L Meta+L" },
-  { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "Hold Ctrl/⌘ R", ariaShortcut: "Control+R Meta+R" },
-  { id: "ellipse", label: "Ellipse", icon: Circle, shortcut: "Hold Ctrl/⌘ O", ariaShortcut: "Control+O Meta+O" },
-  { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "Hold Ctrl/⌘ A", ariaShortcut: "Control+A Meta+A" },
+  { id: "line", label: "Line", icon: Minus, shortcut: "Hold Ctrl Q", ariaShortcut: "Control+Q" },
+  { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "Hold Ctrl R", ariaShortcut: "Control+R" },
+  { id: "ellipse", label: "Ellipse", icon: Circle, shortcut: "Hold Ctrl S", ariaShortcut: "Control+S" },
+  { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "Hold Ctrl A", ariaShortcut: "Control+A" },
   { id: "hand", label: "Pan", icon: Hand, shortcut: "Space", ariaShortcut: "Space" },
 ];
 
@@ -392,7 +391,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     const paths = isInk
       ? [shiftPressedRef.current ? [gesture.start, gesture.current] : gesture.rawPoints]
       : buildShapePaths(gesture.tool as ShapeTool, gesture.start, gesture.current, {
-          constrain: gesture.forceSquare || shiftPressedRef.current,
+          constrain: shiftPressedRef.current,
           fromCenter: altPressedRef.current,
         });
     const highlighter = gesture.tool === "highlighter";
@@ -560,7 +559,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       const modifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       const permanentTools: Partial<Record<string, Tool>> = { p: "pen", h: "highlighter", e: "eraser" };
-      const temporaryShapeTools: Partial<Record<string, ShapeTool>> = { l: "line", r: "rectangle", o: "ellipse", a: "arrow" };
+      const temporaryShapeTools: Partial<Record<string, ShapeTool>> = { q: "line", r: "rectangle", s: "ellipse", a: "arrow" };
       if (modifier && key === "v") {
         setTool("select");
         return;
@@ -570,7 +569,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         setTool(permanentTools[key]!);
         return;
       }
-      if (modifier && !event.altKey && temporaryShapeTools[key]) {
+      if (event.ctrlKey && !event.altKey && temporaryShapeTools[key]) {
         event.preventDefault();
         if (!event.repeat && !temporaryShapeToolRef.current) {
           const temporaryTool = temporaryShapeTools[key]!;
@@ -1075,8 +1074,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     }
 
     const temporaryShapeTool = temporaryShapeToolRef.current?.tool;
-    const forceSquare = event.button === 0 && (event.ctrlKey || event.metaKey) && !temporaryShapeTool;
-    if ((tool === "hand" && !forceSquare && !temporaryShapeTool) || event.button === 1) {
+    if ((tool === "hand" && !temporaryShapeTool) || event.button === 1) {
       pointerModeRef.current = "pan";
       return;
     }
@@ -1085,7 +1083,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       .reverse()
       .find((stroke) => distanceToStroke(world.x, world.y, stroke) < 12 / viewRef.current.zoom);
 
-    if (tool === "select" && !forceSquare && !temporaryShapeTool) {
+    if (tool === "select" && !temporaryShapeTool) {
       if (!hit) setSelectedIds([]);
       else if (!selectedIds.includes(hit.id)) setSelectedIds(strokeSelectionIds(page, hit));
       if (hit) {
@@ -1094,7 +1092,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       }
       return;
     }
-    if (tool === "eraser" && !forceSquare && !temporaryShapeTool) {
+    if (tool === "eraser" && !temporaryShapeTool) {
       pointerModeRef.current = "erase";
       gestureSnapshotRef.current = copyPages(pagesRef.current);
       if (hit) {
@@ -1118,9 +1116,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     shiftPressedRef.current = event.shiftKey;
     altPressedRef.current = event.altKey;
     drawingGestureRef.current = {
-      tool: temporaryShapeTool ?? (forceSquare ? "rectangle" : tool as DrawingTool),
+      tool: (temporaryShapeTool ?? tool) as DrawingTool,
       color,
-      forceSquare,
       pageId: page.id,
       start: point,
       current: point,
