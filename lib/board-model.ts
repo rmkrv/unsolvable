@@ -12,6 +12,7 @@ export type Stroke = {
   modifiedAt?: number;
   modifiedBy?: "student" | "ai";
   semantic?: string;
+  groupId?: string;
 };
 
 export type Page = { id: string; name: string; strokes: Stroke[] };
@@ -66,6 +67,7 @@ export function serializeBoard(page: Page, viewport: Viewport, hintLevel: number
       pointCount: stroke.points.length,
       modifiedBy: stroke.modifiedBy,
       semantic: stroke.semantic,
+      groupId: stroke.groupId,
     })),
   };
 }

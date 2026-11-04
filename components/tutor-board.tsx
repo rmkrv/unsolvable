@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  ArrowUpRight,
   Cable,
   Check,
   ChevronDown,
+  Circle,
   CircleStop,
   Eraser,
   Hand,
@@ -13,6 +15,8 @@ import {
   MousePointer2,
   PenLine,
   Plus,
+  Square,
+  Minus,
   Redo2,
   Sparkles,
   Undo2,
@@ -28,15 +32,27 @@ import {
   makeId,
   strokeBounds,
   type Page,
+  type Point,
   type Stroke,
   type Viewport,
 } from "@/lib/board-model";
 import { generateFeedbackStroke, generateHandwriting, generateTemplate, measureHandwriting } from "@/lib/trajectory-generator";
 import { findFreeHandwritingAnchor } from "@/lib/handwriting-placement.mjs";
 import { createEnglishSpeechController } from "@/lib/english-speech.mjs";
+import { buildShapePaths, isEditableTarget, type ShapeTool } from "@/lib/board-interactions.mjs";
 
-type Tool = "select" | "pen" | "highlighter" | "eraser" | "hand";
+type Tool = "select" | "pen" | "highlighter" | "eraser" | "hand" | ShapeTool;
+type DrawingTool = "pen" | "highlighter" | ShapeTool;
 type BridgeState = "connecting" | "ready" | "offline" | "thinking" | "drawing";
+type DrawingGesture = {
+  tool: DrawingTool;
+  pageId: string;
+  start: { x: number; y: number; pressure: number; t: number };
+  current: { x: number; y: number; pressure: number; t: number };
+  rawPoints: Array<{ x: number; y: number; pressure: number; t: number }>;
+  groupId: string;
+  createdAt: number;
+};
 type BoardAction =
   | { type: "draw"; template: string; anchor: { x: number; y: number }; scale: number; labels: string[]; narration: string }
   | { type: "write"; text: string; nearStrokeIds: string[]; size: number; narration: string }
@@ -47,6 +63,7 @@ type BoardAction =
 const STORAGE_KEY = "vector-tutor-board-v1";
 const BOARD_ID_KEY = "vector-tutor-board-id-v1";
 const ACTION_CURSOR_KEY = "vector-tutor-action-cursor-v1";
+const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
 const LOCAL_CODEX_BRIDGE = import.meta.env.VITE_TUTOR_BRIDGE_URL as string | undefined;
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
 
@@ -55,6 +72,10 @@ const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut: str
   { id: "pen", label: "Pen", icon: PenLine, shortcut: "P" },
   { id: "highlighter", label: "Highlight", icon: Highlighter, shortcut: "H" },
   { id: "eraser", label: "Eraser", icon: Eraser, shortcut: "E" },
+  { id: "line", label: "Line", icon: Minus, shortcut: "L" },
+  { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "R" },
+  { id: "ellipse", label: "Ellipse", icon: Circle, shortcut: "O" },
+  { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "A" },
   { id: "hand", label: "Pan", icon: Hand, shortcut: "Space" },
 ];
 
@@ -72,16 +93,48 @@ function copyPages(pages: Page[]) {
   }));
 }
 
+function selectedStrokes(page: Page | undefined, selectedId: string | null) {
+  if (!page || !selectedId) return [];
+  const selected = page.strokes.find((stroke) => stroke.id === selectedId);
+  if (!selected) return [];
+  return selected.groupId
+    ? page.strokes.filter((stroke) => stroke.groupId === selected.groupId)
+    : [selected];
+}
+
+function parseClipboardStrokes(raw: string) {
+  try {
+    const value = JSON.parse(raw) as { strokes?: Stroke[] };
+    if (!Array.isArray(value.strokes)) return [];
+    return value.strokes.filter((stroke) =>
+      stroke
+      && typeof stroke.id === "string"
+      && typeof stroke.color === "string"
+      && Number.isFinite(stroke.width)
+      && Number.isFinite(stroke.opacity)
+      && ["pen", "highlighter", "feedback"].includes(stroke.kind)
+      && Array.isArray(stroke.points)
+      && stroke.points.every((point) =>
+        Number.isFinite(point?.x) && Number.isFinite(point?.y) && Number.isFinite(point?.pressure) && Number.isFinite(point?.t),
+      ),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function ToolButton({
   active,
   label,
   shortcut,
+  ariaShortcut,
   onClick,
   children,
 }: {
   active?: boolean;
   label: string;
   shortcut?: string;
+  ariaShortcut?: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -91,6 +144,7 @@ function ToolButton({
       onClick={onClick}
       title={`${label}${shortcut ? ` (${shortcut})` : ""}`}
       aria-label={label}
+      aria-keyshortcuts={ariaShortcut ?? shortcut}
       type="button"
     >
       {children}
@@ -139,8 +193,10 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const redoRef = useRef<Page[][]>([]);
   const pagesRef = useRef(pages);
   const viewRef = useRef(view);
+  const toolRef = useRef<Tool>(tool);
   const activePageIdRef = useRef(activePageId);
-  const currentStrokeRef = useRef<Stroke | null>(null);
+  const currentStrokesRef = useRef<Stroke[]>([]);
+  const drawingGestureRef = useRef<DrawingGesture | null>(null);
   const pointerModeRef = useRef<"draw" | "pan" | "move" | "erase" | null>(null);
   const pointerStartRef = useRef({ x: 0, y: 0, screenX: 0, screenY: 0 });
   const viewStartRef = useRef(view);
@@ -155,6 +211,11 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const lastActionIdRef = useRef(0);
   const hasActionCursorRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
+  const previousToolRef = useRef<Tool | null>(null);
+  const shiftPressedRef = useRef(false);
+  const altPressedRef = useRef(false);
+  const clipboardRef = useRef<Stroke[]>([]);
+  const pasteCountRef = useRef(0);
 
   const activePage = useMemo(
     () => pages.find((page) => page.id === activePageId) ?? pages[0],
@@ -167,6 +228,9 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   useEffect(() => {
     viewRef.current = view;
   }, [view]);
+  useEffect(() => {
+    toolRef.current = tool;
+  }, [tool]);
   useEffect(() => {
     activePageIdRef.current = activePageId;
   }, [activePageId]);
@@ -237,7 +301,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
     const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current) ?? pagesRef.current[0];
     const strokes = [...(page?.strokes ?? [])];
-    if (currentStrokeRef.current) strokes.push(currentStrokeRef.current);
+    strokes.push(...currentStrokesRef.current);
     for (const stroke of strokes) {
       if (stroke.points.length < 2) continue;
       context.save();
@@ -263,9 +327,9 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     }
 
     if (selectedId) {
-      const selected = page?.strokes.find((stroke) => stroke.id === selectedId);
-      if (selected) {
-        const box = strokeBounds(selected);
+      const selected = selectedStrokes(page, selectedId);
+      if (selected.length) {
+        const box = aggregateBounds(selected)!;
         context.save();
         context.strokeStyle = "#3558d4";
         context.lineWidth = 1.25;
@@ -288,6 +352,36 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       drawCanvas();
     });
   }, [drawCanvas]);
+
+  const rebuildDrawingPreview = useCallback(() => {
+    const gesture = drawingGestureRef.current;
+    if (!gesture) return;
+    const isInk = gesture.tool === "pen" || gesture.tool === "highlighter";
+    const paths = isInk
+      ? [shiftPressedRef.current ? [gesture.start, gesture.current] : gesture.rawPoints]
+      : buildShapePaths(gesture.tool as ShapeTool, gesture.start, gesture.current, {
+          constrain: shiftPressedRef.current,
+          fromCenter: altPressedRef.current,
+        });
+    const highlighter = gesture.tool === "highlighter";
+    currentStrokesRef.current = paths.map((path, pathIndex) => ({
+      id: pathIndex === 0 ? gesture.groupId : `${gesture.groupId}-${pathIndex}`,
+      points: path.map((point, pointIndex) => ({
+        ...point,
+        pressure: typeof (point as Partial<Point>).pressure === "number" ? (point as Point).pressure : 0.62,
+        t: typeof (point as Partial<Point>).t === "number" ? (point as Point).t : gesture.createdAt + pointIndex,
+      })),
+      color: highlighter ? "#f2c94c" : color,
+      width: highlighter ? 18 : 4.2,
+      opacity: highlighter ? 0.28 : 1,
+      kind: highlighter ? "highlighter" : "pen",
+      author: "student",
+      createdAt: gesture.createdAt,
+      semantic: isInk ? undefined : `shape:${gesture.tool}`,
+      groupId: paths.length > 1 ? gesture.groupId : undefined,
+    }));
+    requestRender();
+  }, [color, requestRender]);
 
   useEffect(() => {
     requestRender();
@@ -348,26 +442,216 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     setSelectedId(null);
   }, []);
 
+  const copySelection = useCallback(() => {
+    const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current);
+    const strokes = selectedStrokes(page, selectedId);
+    if (!strokes.length) return [];
+    clipboardRef.current = copyPages([{ id: "clipboard", name: "Clipboard", strokes }])[0].strokes;
+    pasteCountRef.current = 0;
+    return clipboardRef.current;
+  }, [selectedId]);
+
+  const deleteSelection = useCallback(() => {
+    const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current);
+    const ids = new Set(selectedStrokes(page, selectedId).map((stroke) => stroke.id));
+    if (!ids.size) return;
+    commitPages((previous) => previous.map((candidate) =>
+      candidate.id === activePageIdRef.current
+        ? { ...candidate, strokes: candidate.strokes.filter((stroke) => !ids.has(stroke.id)) }
+        : candidate,
+    ));
+    setSelectedId(null);
+  }, [commitPages, selectedId]);
+
+  const pasteStrokes = useCallback((source = clipboardRef.current) => {
+    if (!source.length) return;
+    pasteCountRef.current += 1;
+    const offset = (18 * pasteCountRef.current) / viewRef.current.zoom;
+    const groupIds = new Map<string, string>();
+    const pasted = source.map((stroke) => {
+      const groupId = stroke.groupId
+        ? (groupIds.get(stroke.groupId) ?? (() => {
+            const id = makeId("group");
+            groupIds.set(stroke.groupId!, id);
+            return id;
+          })())
+        : undefined;
+      return {
+        ...stroke,
+        id: makeId("student"),
+        groupId,
+        author: "student" as const,
+        createdAt: Date.now(),
+        modifiedAt: Date.now(),
+        modifiedBy: "student" as const,
+        points: stroke.points.map((point) => ({ ...point, x: point.x + offset, y: point.y + offset })),
+      };
+    });
+    commitPages((previous) => previous.map((page) =>
+      page.id === activePageIdRef.current ? { ...page, strokes: [...page.strokes, ...pasted] } : page,
+    ));
+    setSelectedId(pasted[0].id);
+    setTool("select");
+  }, [commitPages]);
+
+  const duplicateSelection = useCallback(() => {
+    const copied = copySelection();
+    if (copied.length) pasteStrokes(copied);
+  }, [copySelection, pasteStrokes]);
+
+  const zoomAtCenter = useCallback((factor: number) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const screenX = rect.width / 2;
+    const screenY = rect.height / 2;
+    setView((old) => {
+      const nextZoom = clamp(old.zoom * factor, 0.2, 4);
+      const worldX = (screenX - old.x) / old.zoom;
+      const worldY = (screenY - old.y) / old.zoom;
+      return { x: screenX - worldX * nextZoom, y: screenY - worldY * nextZoom, zoom: nextZoom };
+    });
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.matches("input, textarea, [contenteditable='true']")) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+      if (event.key === "Shift") {
+        shiftPressedRef.current = true;
+        rebuildDrawingPreview();
+      }
+      if (event.key === "Alt") {
+        altPressedRef.current = true;
+        rebuildDrawingPreview();
+        if (drawingGestureRef.current) event.preventDefault();
+      }
+      if (isEditableTarget(event.target)) return;
+      if (connectionOpen && event.key !== "Escape") return;
+      const modifier = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (modifier && key === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
         else undo();
         return;
       }
-      if (event.code === "Space") {
+      if (modifier && key === "y") {
         event.preventDefault();
-        setTool("hand");
+        redo();
+        return;
       }
-      const mapped: Record<string, Tool> = { v: "select", p: "pen", h: "highlighter", e: "eraser" };
-      if (mapped[event.key.toLowerCase()]) setTool(mapped[event.key.toLowerCase()]);
+      if (modifier && key === "d") {
+        event.preventDefault();
+        duplicateSelection();
+        return;
+      }
+      if (modifier && (key === "+" || key === "=")) {
+        event.preventDefault();
+        zoomAtCenter(1.18);
+        return;
+      }
+      if (modifier && key === "-") {
+        event.preventDefault();
+        zoomAtCenter(1 / 1.18);
+        return;
+      }
+      if (modifier && key === "0") {
+        event.preventDefault();
+        setView({ x: 86, y: 70, zoom: 1 });
+        return;
+      }
+      if ((event.key === "Delete" || event.key === "Backspace") && selectedId) {
+        event.preventDefault();
+        deleteSelection();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setConnectionOpen(false);
+        setPagesOpen(false);
+        setSelectedId(null);
+        drawingGestureRef.current = null;
+        currentStrokesRef.current = [];
+        pointerModeRef.current = null;
+        requestRender();
+        return;
+      }
+      if (event.code === "Space" && !modifier && !event.altKey && !event.repeat && !pointerModeRef.current) {
+        event.preventDefault();
+        previousToolRef.current = toolRef.current;
+        setTool("hand");
+        return;
+      }
+      if (modifier || event.altKey) return;
+      const mapped: Record<string, Tool> = {
+        v: "select", p: "pen", h: "highlighter", e: "eraser",
+        l: "line", r: "rectangle", o: "ellipse", a: "arrow",
+      };
+      if (mapped[key]) setTool(mapped[key]);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Shift") {
+        shiftPressedRef.current = false;
+        rebuildDrawingPreview();
+      }
+      if (event.key === "Alt") {
+        altPressedRef.current = false;
+        rebuildDrawingPreview();
+      }
+      if (event.code === "Space" && previousToolRef.current) {
+        setTool(previousToolRef.current);
+        previousToolRef.current = null;
+      }
+    };
+    const onCopy = (event: ClipboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const strokes = copySelection();
+      if (!strokes.length) return;
+      event.preventDefault();
+      event.clipboardData?.setData(STROKE_CLIPBOARD_TYPE, JSON.stringify({ version: 1, strokes }));
+    };
+    const onCut = (event: ClipboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const strokes = copySelection();
+      if (!strokes.length) return;
+      event.preventDefault();
+      event.clipboardData?.setData(STROKE_CLIPBOARD_TYPE, JSON.stringify({ version: 1, strokes }));
+      deleteSelection();
+    };
+    const onPaste = (event: ClipboardEvent) => {
+      if (isEditableTarget(event.target)) return;
+      const raw = event.clipboardData?.getData(STROKE_CLIPBOARD_TYPE) ?? "";
+      const strokes = raw ? parseClipboardStrokes(raw) : clipboardRef.current;
+      if (!strokes.length) return;
+      event.preventDefault();
+      if (raw) {
+        clipboardRef.current = strokes;
+        pasteCountRef.current = 0;
+      }
+      pasteStrokes(strokes);
+    };
+    const onBlur = () => {
+      shiftPressedRef.current = false;
+      altPressedRef.current = false;
+      if (previousToolRef.current) {
+        setTool(previousToolRef.current);
+        previousToolRef.current = null;
+      }
+      rebuildDrawingPreview();
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [redo, undo]);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("copy", onCopy);
+    window.addEventListener("cut", onCut);
+    window.addEventListener("paste", onPaste);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("copy", onCopy);
+      window.removeEventListener("cut", onCut);
+      window.removeEventListener("paste", onPaste);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [connectionOpen, copySelection, deleteSelection, duplicateSelection, pasteStrokes, rebuildDrawingPreview, redo, requestRender, selectedId, undo, zoomAtCenter]);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -740,10 +1024,13 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       pointerModeRef.current = "erase";
       gestureSnapshotRef.current = copyPages(pagesRef.current);
       if (hit) {
+        const erasedIds = new Set(
+          hit.groupId ? page.strokes.filter((stroke) => stroke.groupId === hit.groupId).map((stroke) => stroke.id) : [hit.id],
+        );
         setPages((previous) =>
           previous.map((candidate) =>
             candidate.id === page.id
-              ? { ...candidate, strokes: candidate.strokes.filter((stroke) => stroke.id !== hit.id) }
+              ? { ...candidate, strokes: candidate.strokes.filter((stroke) => !erasedIds.has(stroke.id)) }
               : candidate,
           ),
         );
@@ -753,17 +1040,19 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
     pointerModeRef.current = "draw";
     const pressure = event.pointerType === "mouse" ? 0.62 : clamp(event.pressure || 0.55, 0.15, 1);
-    currentStrokeRef.current = {
-      id: makeId("student"),
-      points: [{ x: world.x, y: world.y, pressure, t: performance.now() }],
-      color: tool === "highlighter" ? "#f2c94c" : color,
-      width: tool === "highlighter" ? 18 : 4.2,
-      opacity: tool === "highlighter" ? 0.28 : 1,
-      kind: tool === "highlighter" ? "highlighter" : "pen",
-      author: "student",
+    const point = { x: world.x, y: world.y, pressure, t: performance.now() };
+    shiftPressedRef.current = event.shiftKey;
+    altPressedRef.current = event.altKey;
+    drawingGestureRef.current = {
+      tool: tool as DrawingTool,
+      pageId: page.id,
+      start: point,
+      current: point,
+      rawPoints: [point],
+      groupId: makeId("student"),
       createdAt: Date.now(),
     };
-    requestRender();
+    rebuildDrawingPreview();
   };
 
   const onPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -778,32 +1067,38 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       return;
     }
     const world = worldPoint(event, canvas, viewRef.current);
-    if (pointerModeRef.current === "draw" && currentStrokeRef.current) {
-      const last = currentStrokeRef.current.points.at(-1)!;
-      if (Math.hypot(world.x - last.x, world.y - last.y) < 0.7) return;
+    if (pointerModeRef.current === "draw" && drawingGestureRef.current) {
+      const gesture = drawingGestureRef.current;
       const pressure = event.pointerType === "mouse" ? 0.62 : clamp(event.pressure || 0.55, 0.15, 1);
-      currentStrokeRef.current.points.push({ x: world.x, y: world.y, pressure, t: performance.now() });
-      requestRender();
+      const point = { x: world.x, y: world.y, pressure, t: performance.now() };
+      gesture.current = point;
+      shiftPressedRef.current = event.shiftKey;
+      altPressedRef.current = event.altKey;
+      if (gesture.tool === "pen" || gesture.tool === "highlighter") {
+        const last = gesture.rawPoints.at(-1)!;
+        if (Math.hypot(world.x - last.x, world.y - last.y) >= 0.7) gesture.rawPoints.push(point);
+      }
+      rebuildDrawingPreview();
       return;
     }
     const pageId = activePageIdRef.current;
     if (pointerModeRef.current === "move" && selectedId && gestureSnapshotRef.current) {
       const dx = world.x - pointerStartRef.current.x;
       const dy = world.y - pointerStartRef.current.y;
-      const source = gestureSnapshotRef.current
-        .find((page) => page.id === pageId)
-        ?.strokes.find((stroke) => stroke.id === selectedId);
-      if (!source) return;
+      const sourcePage = gestureSnapshotRef.current.find((page) => page.id === pageId);
+      const sources = selectedStrokes(sourcePage, selectedId);
+      const sourceById = new Map(sources.map((stroke) => [stroke.id, stroke]));
+      if (!sources.length) return;
       setPages((previous) =>
         previous.map((page) =>
           page.id === pageId
             ? {
                 ...page,
                 strokes: page.strokes.map((stroke) =>
-                  stroke.id === selectedId
+                  sourceById.has(stroke.id)
                     ? {
                         ...stroke,
-                        points: source.points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
+                        points: sourceById.get(stroke.id)!.points.map((point) => ({ ...point, x: point.x + dx, y: point.y + dy })),
                         modifiedAt: Date.now(),
                         modifiedBy: "student",
                       }
@@ -821,9 +1116,14 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           page.id === pageId
             ? {
                 ...page,
-                strokes: page.strokes.filter(
-                  (stroke) => distanceToStroke(world.x, world.y, stroke) >= 14 / viewRef.current.zoom,
-                ),
+                strokes: (() => {
+                  const hitStrokes = page.strokes.filter(
+                    (stroke) => distanceToStroke(world.x, world.y, stroke) < 14 / viewRef.current.zoom,
+                  );
+                  const ids = new Set(hitStrokes.map((stroke) => stroke.id));
+                  const groups = new Set(hitStrokes.map((stroke) => stroke.groupId).filter(Boolean));
+                  return page.strokes.filter((stroke) => !ids.has(stroke.id) && (!stroke.groupId || !groups.has(stroke.groupId)));
+                })(),
               }
             : page,
         ),
@@ -839,18 +1139,27 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     } catch {
       // Pointer capture may already have been released by the browser.
     }
-    if (mode === "draw" && currentStrokeRef.current) {
-      const finished = currentStrokeRef.current;
-      currentStrokeRef.current = null;
-      if (finished.points.length === 1) {
-        finished.points.push({ ...finished.points[0], x: finished.points[0].x + 0.5 });
+    if (mode === "draw" && drawingGestureRef.current) {
+      const gesture = drawingGestureRef.current;
+      shiftPressedRef.current = event.shiftKey;
+      altPressedRef.current = event.altKey;
+      rebuildDrawingPreview();
+      const distance = Math.hypot(gesture.current.x - gesture.start.x, gesture.current.y - gesture.start.y);
+      const isInk = gesture.tool === "pen" || gesture.tool === "highlighter";
+      const finished = currentStrokesRef.current;
+      drawingGestureRef.current = null;
+      currentStrokesRef.current = [];
+      if (isInk && finished[0]?.points.length === 1) {
+        finished[0].points.push({ ...finished[0].points[0], x: finished[0].points[0].x + 0.5 });
       }
-      commitPages((previous) =>
-        previous.map((page) =>
-          page.id === activePageIdRef.current ? { ...page, strokes: [...page.strokes, finished] } : page,
-        ),
-      );
-      scheduleObservation();
+      if (finished.length && (isInk || distance >= 3 / viewRef.current.zoom)) {
+        commitPages((previous) =>
+          previous.map((page) =>
+            page.id === gesture.pageId ? { ...page, strokes: [...page.strokes, ...finished] } : page,
+          ),
+        );
+        scheduleObservation();
+      }
     } else if ((mode === "move" || mode === "erase") && gestureSnapshotRef.current) {
       undoRef.current.push(gestureSnapshotRef.current);
       redoRef.current = [];
@@ -959,8 +1268,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           </div>
           <div className="tool-divider" />
           <div className="tool-group">
-            <ToolButton label="Undo" shortcut="Ctrl Z" onClick={undo}><Undo2 size={18} /></ToolButton>
-            <ToolButton label="Redo" shortcut="Ctrl Shift Z" onClick={redo}><Redo2 size={18} /></ToolButton>
+            <ToolButton label="Undo" shortcut="Ctrl/⌘ Z" ariaShortcut="Control+Z Meta+Z" onClick={undo}><Undo2 size={18} /></ToolButton>
+            <ToolButton label="Redo" shortcut="Ctrl/⌘ Shift Z or Ctrl Y" ariaShortcut="Control+Shift+Z Meta+Shift+Z Control+Y" onClick={redo}><Redo2 size={18} /></ToolButton>
           </div>
         </aside>
 
