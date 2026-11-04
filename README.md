@@ -1,4 +1,4 @@
-# Unsolvable — AI Engineering Tutor
+# Some things are Unsolvable. Or are you just weak?
 
 Unsolvable is an engineering whiteboard with a local Codex adapter. The student writes in the browser; Codex observes the board through Unsolvable's local MCP tools and sends validated speech, feedback, erasure, and semantic drawing actions back to the browser.
 
