@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildShapePaths, shapeBounds, snapLineEnd } from "../lib/board-interactions.mjs";
+import { boundsIntersect, buildShapePaths, selectionBounds, shapeBounds, snapLineEnd } from "../lib/board-interactions.mjs";
 
 test("snaps lines to 45 degree increments without changing their length", () => {
   const end = snapLineEnd({ x: 0, y: 0 }, { x: 10, y: 2 });
@@ -49,4 +49,11 @@ test("builds an arrow as one grouped shaft and two head paths", () => {
   const paths = buildShapePaths("arrow", { x: 0, y: 0 }, { x: 40, y: 0 });
   assert.equal(paths.length, 3);
   assert.deepEqual(paths.map((path) => path[0]), [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 0 }]);
+});
+
+test("normalizes a reverse marquee and detects intersecting strokes", () => {
+  const marquee = selectionBounds({ x: 40, y: 30 }, { x: 10, y: 5 });
+  assert.deepEqual(marquee, { x: 10, y: 5, width: 30, height: 25 });
+  assert.equal(boundsIntersect(marquee, { x: 35, y: 20, width: 20, height: 20 }), true);
+  assert.equal(boundsIntersect(marquee, { x: 45, y: 35, width: 5, height: 5 }), false);
 });

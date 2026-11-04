@@ -8,6 +8,14 @@ export function shapeBounds(
   constrain?: boolean,
   fromCenter?: boolean,
 ): { x: number; y: number; width: number; height: number };
+export function selectionBounds(
+  start: GeometryPoint,
+  current: GeometryPoint,
+): { x: number; y: number; width: number; height: number };
+export function boundsIntersect(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean;
 export function buildShapePaths(
   tool: ShapeTool,
   start: GeometryPoint,
