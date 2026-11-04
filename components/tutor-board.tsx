@@ -46,6 +46,7 @@ type DrawingTool = "pen" | "highlighter" | ShapeTool;
 type BridgeState = "connecting" | "ready" | "offline" | "thinking" | "drawing";
 type DrawingGesture = {
   tool: DrawingTool;
+  color: string;
   pageId: string;
   start: { x: number; y: number; pressure: number; t: number };
   current: { x: number; y: number; pressure: number; t: number };
@@ -63,6 +64,7 @@ type BoardAction =
 const STORAGE_KEY = "vector-tutor-board-v1";
 const BOARD_ID_KEY = "vector-tutor-board-id-v1";
 const ACTION_CURSOR_KEY = "vector-tutor-action-cursor-v1";
+const COLOR_KEY = "vector-tutor-color-v1";
 const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
 const LOCAL_CODEX_BRIDGE = import.meta.env.VITE_TUTOR_BRIDGE_URL as string | undefined;
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
@@ -236,6 +238,15 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   }, [activePageId]);
 
   useEffect(() => {
+    const saved = localStorage.getItem(COLOR_KEY);
+    if (saved && /^#[0-9a-f]{6}$/i.test(saved)) setColor(saved);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(COLOR_KEY, color);
+  }, [color]);
+
+  useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (!saved) return;
@@ -371,7 +382,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         pressure: typeof (point as Partial<Point>).pressure === "number" ? (point as Point).pressure : 0.62,
         t: typeof (point as Partial<Point>).t === "number" ? (point as Point).t : gesture.createdAt + pointIndex,
       })),
-      color: highlighter ? "#f2c94c" : color,
+      color: gesture.color,
       width: highlighter ? 18 : 4.2,
       opacity: highlighter ? 0.28 : 1,
       kind: highlighter ? "highlighter" : "pen",
@@ -381,7 +392,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       groupId: paths.length > 1 ? gesture.groupId : undefined,
     }));
     requestRender();
-  }, [color, requestRender]);
+  }, [requestRender]);
 
   useEffect(() => {
     requestRender();
@@ -568,6 +579,10 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         setConnectionOpen(false);
         setPagesOpen(false);
         setSelectedId(null);
+        if (gestureSnapshotRef.current && (pointerModeRef.current === "move" || pointerModeRef.current === "erase")) {
+          setPages(gestureSnapshotRef.current);
+        }
+        gestureSnapshotRef.current = null;
         drawingGestureRef.current = null;
         currentStrokesRef.current = [];
         pointerModeRef.current = null;
@@ -1045,6 +1060,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     altPressedRef.current = event.altKey;
     drawingGestureRef.current = {
       tool: tool as DrawingTool,
+      color,
       pageId: page.id,
       start: point,
       current: point,
@@ -1141,6 +1157,15 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     }
     if (mode === "draw" && drawingGestureRef.current) {
       const gesture = drawingGestureRef.current;
+      const canvas = canvasRef.current;
+      if (canvas && event.type === "pointerup") {
+        const world = worldPoint(event, canvas, viewRef.current);
+        gesture.current = { ...world, pressure: gesture.current.pressure, t: performance.now() };
+        if (gesture.tool === "pen" || gesture.tool === "highlighter") {
+          const last = gesture.rawPoints.at(-1)!;
+          if (Math.hypot(world.x - last.x, world.y - last.y) >= 0.7) gesture.rawPoints.push(gesture.current);
+        }
+      }
       shiftPressedRef.current = event.shiftKey;
       altPressedRef.current = event.altKey;
       rebuildDrawingPreview();
@@ -1152,7 +1177,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       if (isInk && finished[0]?.points.length === 1) {
         finished[0].points.push({ ...finished[0].points[0], x: finished[0].points[0].x + 0.5 });
       }
-      if (finished.length && (isInk || distance >= 3 / viewRef.current.zoom)) {
+      if (event.type !== "pointercancel" && finished.length && (isInk || distance >= 3 / viewRef.current.zoom)) {
         commitPages((previous) =>
           previous.map((page) =>
             page.id === gesture.pageId ? { ...page, strokes: [...page.strokes, ...finished] } : page,
@@ -1161,10 +1186,14 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         scheduleObservation();
       }
     } else if ((mode === "move" || mode === "erase") && gestureSnapshotRef.current) {
-      undoRef.current.push(gestureSnapshotRef.current);
-      redoRef.current = [];
+      if (event.type === "pointercancel") {
+        setPages(gestureSnapshotRef.current);
+      } else {
+        undoRef.current.push(gestureSnapshotRef.current);
+        redoRef.current = [];
+        scheduleObservation();
+      }
       gestureSnapshotRef.current = null;
-      scheduleObservation();
     }
     requestRender();
   };
@@ -1263,8 +1292,12 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           <div className="tool-divider" />
           <div className="color-row" aria-label="Ink colors">
             {["#172036", "#3558d4", "#d9483b"].map((swatch) => (
-              <button type="button" aria-label={`Use ${swatch} ink`} className={`color-dot ${color === swatch ? "is-active" : ""}`} style={{ backgroundColor: swatch }} key={swatch} onClick={() => { setColor(swatch); setTool("pen"); }} />
+              <button type="button" aria-label={`Use ${swatch} color`} aria-pressed={color === swatch} className={`color-dot ${color === swatch ? "is-active" : ""}`} style={{ backgroundColor: swatch }} key={swatch} onClick={() => setColor(swatch)} />
             ))}
+            <label className={`custom-color ${!["#172036", "#3558d4", "#d9483b"].includes(color.toLowerCase()) ? "is-active" : ""}`} title="Choose any color">
+              <input type="color" value={color} onChange={(event) => setColor(event.target.value)} aria-label="Choose any drawing color" />
+              <span className="custom-color-preview" style={{ backgroundColor: color }} aria-hidden="true" />
+            </label>
           </div>
           <div className="tool-divider" />
           <div className="tool-group">
