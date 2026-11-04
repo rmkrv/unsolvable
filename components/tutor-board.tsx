@@ -74,10 +74,10 @@ const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut?: st
   { id: "pen", label: "Pen", icon: PenLine, shortcut: "Ctrl/⌘ P", ariaShortcut: "Control+P Meta+P" },
   { id: "highlighter", label: "Highlight", icon: Highlighter, shortcut: "Ctrl/⌘ H", ariaShortcut: "Control+H Meta+H" },
   { id: "eraser", label: "Eraser", icon: Eraser, shortcut: "Ctrl/⌘ E", ariaShortcut: "Control+E Meta+E" },
-  { id: "line", label: "Line", icon: Minus, shortcut: "Hold Ctrl Q", ariaShortcut: "Control+Q" },
-  { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "Hold Ctrl R", ariaShortcut: "Control+R" },
-  { id: "ellipse", label: "Ellipse", icon: Circle, shortcut: "Hold Ctrl S", ariaShortcut: "Control+S" },
-  { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "Hold Ctrl A", ariaShortcut: "Control+A" },
+  { id: "line", label: "Line", icon: Minus, shortcut: "Hold Shift", ariaShortcut: "Shift" },
+  { id: "rectangle", label: "Rectangle", icon: Square, shortcut: "Hold Ctrl", ariaShortcut: "Control" },
+  { id: "ellipse", label: "Ellipse", icon: Circle, shortcut: "Hold E", ariaShortcut: "E" },
+  { id: "arrow", label: "Arrow", icon: ArrowUpRight, shortcut: "Hold A", ariaShortcut: "A" },
   { id: "hand", label: "Pan", icon: Hand, shortcut: "Space", ariaShortcut: "Space" },
 ];
 
@@ -559,7 +559,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       const modifier = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       const permanentTools: Partial<Record<string, Tool>> = { p: "pen", h: "highlighter", e: "eraser" };
-      const temporaryShapeTools: Partial<Record<string, ShapeTool>> = { q: "line", r: "rectangle", s: "ellipse", a: "arrow" };
+      const temporaryShapeTools: Partial<Record<string, ShapeTool>> = { e: "ellipse", a: "arrow" };
       if (modifier && key === "v") {
         setTool("select");
         return;
@@ -569,7 +569,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         setTool(permanentTools[key]!);
         return;
       }
-      if (event.ctrlKey && !event.altKey && temporaryShapeTools[key]) {
+      if (!modifier && !event.altKey && temporaryShapeTools[key]) {
         event.preventDefault();
         if (!event.repeat && !temporaryShapeToolRef.current) {
           const temporaryTool = temporaryShapeTools[key]!;
@@ -1073,8 +1073,11 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       return;
     }
 
-    const temporaryShapeTool = temporaryShapeToolRef.current?.tool;
-    if ((tool === "hand" && !temporaryShapeTool) || event.button === 1) {
+    const heldShapeTool = temporaryShapeToolRef.current?.tool;
+    const currentToolIsShape = tool === "line" || tool === "rectangle" || tool === "ellipse" || tool === "arrow";
+    const gestureTool = heldShapeTool
+      ?? (event.ctrlKey ? "rectangle" : event.shiftKey && !currentToolIsShape ? "line" : undefined);
+    if ((tool === "hand" && !gestureTool) || event.button === 1) {
       pointerModeRef.current = "pan";
       return;
     }
@@ -1083,7 +1086,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       .reverse()
       .find((stroke) => distanceToStroke(world.x, world.y, stroke) < 12 / viewRef.current.zoom);
 
-    if (tool === "select" && !temporaryShapeTool) {
+    if (tool === "select" && !gestureTool) {
       if (!hit) setSelectedIds([]);
       else if (!selectedIds.includes(hit.id)) setSelectedIds(strokeSelectionIds(page, hit));
       if (hit) {
@@ -1092,7 +1095,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       }
       return;
     }
-    if (tool === "eraser" && !temporaryShapeTool) {
+    if (tool === "eraser" && !gestureTool) {
       pointerModeRef.current = "erase";
       gestureSnapshotRef.current = copyPages(pagesRef.current);
       if (hit) {
@@ -1116,7 +1119,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     shiftPressedRef.current = event.shiftKey;
     altPressedRef.current = event.altKey;
     drawingGestureRef.current = {
-      tool: (temporaryShapeTool ?? tool) as DrawingTool,
+      tool: (gestureTool ?? tool) as DrawingTool,
       color,
       pageId: page.id,
       start: point,
