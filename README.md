@@ -47,6 +47,8 @@ The deployment must set `VECTOR_PLUGIN_ID` to the exact plugin ID returned by Si
 - `board_feedback` queues a visual mark tied to existing stroke IDs.
 - `board_write_equation` handwrites a checked correction in nearby free space as editable pen strokes. Lowercase letters, powers, subscripts, fractions, and common integral symbols use a handwriting stroke font.
 - `board_draw` queues a semantic diagram rendered locally as editable pen trajectories.
+- `board_write_text` places one short plain-text label at a board coordinate as grouped editable pen strokes.
+- `board_draw_arrow` draws one grouped editable arrow between two board coordinates; it does not attach to other shapes.
 - `board_erase` removes only identified AI/feedback work in the browser.
 - `board_say` queues a short spoken response.
 

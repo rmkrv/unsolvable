@@ -35,6 +35,30 @@ test("clamps drawing anchors and scale", () => {
   assert.equal(result.scale, 3);
 });
 
+test("accepts bounded plain text and rejects unsupported characters", () => {
+  const action = sanitizeBoardAction(
+    "board_write_text",
+    { text: "  Input A / Output B  ", anchor: { x: 100, y: 200 }, size: 22, narration: "" },
+    new Set(),
+  );
+  assert.equal(action.type, "text");
+  assert.equal(action.text, "Input A / Output B");
+  assert.deepEqual(action.anchor, { x: 100, y: 200 });
+  assert.throws(() => sanitizeBoardAction("board_write_text", { text: "Hello 🌍" }, new Set()), /printable ASCII/);
+});
+
+test("accepts a bounded arrow and rejects invalid endpoints", () => {
+  const action = sanitizeBoardAction(
+    "board_draw_arrow",
+    { from: { x: 10, y: 20 }, to: { x: 90, y: 20 }, narration: "" },
+    new Set(),
+  );
+  assert.equal(action.type, "arrow");
+  assert.deepEqual(action.to, { x: 90, y: 20 });
+  assert.throws(() => sanitizeBoardAction("board_draw_arrow", { from: { x: 0, y: 0 }, to: { x: 0, y: 0 } }, new Set()), /Arrow length/);
+  assert.throws(() => sanitizeBoardAction("board_draw_arrow", { from: { x: 0, y: 0 }, to: { x: Infinity, y: 0 } }, new Set()), /finite board coordinates/);
+});
+
 test("rejects non-English spoken feedback so Codex can retry in English", () => {
   assert.throws(
     () => sanitizeBoardAction("board_say", { speech: "Check this шаг.", tone: "calm" }, new Set()),

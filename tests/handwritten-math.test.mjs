@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { layoutHandwrittenMath } from "../lib/handwritten-math.mjs";
+import { layoutHandwrittenMath, layoutPlainHandwriting } from "../lib/handwritten-math.mjs";
 
 test("renders lowercase letters as distinct handwritten glyphs", () => {
   const lower = layoutHandwrittenMath("x", 26);
@@ -35,4 +35,11 @@ test("supports integral limits and readable equation punctuation", () => {
   assert.ok(sign.points.length > 10, "the integral sign should be a smooth handwritten curve");
   assert.ok(Math.max(...upper.points.map((point) => point[1])) < Math.min(...lower.points.map((point) => point[1])));
   assert.ok(Math.min(...upper.points.map((point) => point[0])) > Math.max(...sign.points.map((point) => point[0])));
+});
+
+test("plain text draws punctuation literally", () => {
+  const layout = layoutPlainHandwriting("Input / Output", 22);
+  assert.ok(layout.paths.some((path) => path.character === "/"));
+  assert.ok(layout.paths.some((path) => path.character === "I"));
+  assert.equal(layout.paths.some((path) => path.character === "fraction bar"), false);
 });

@@ -1,5 +1,5 @@
 import { makeId, type Point, type Stroke } from "./board-model";
-import { layoutHandwrittenMath } from "./handwritten-math.mjs";
+import { layoutHandwrittenMath, layoutPlainHandwriting } from "./handwritten-math.mjs";
 
 type RawPoint = [number, number];
 
@@ -88,6 +88,24 @@ export function generateHandwriting(text: string, anchor: { x: number; y: number
     "#3558d4",
     Math.max(2, size * 0.085),
   ));
+}
+
+export function generatePlainText(text: string, anchor: { x: number; y: number }, size = 22): Stroke[] {
+  const groupId = makeId("text");
+  return layoutPlainHandwriting(text, size).paths.map((path, index) => ({
+    ...stroke(
+      path.points.map(([x, y]: [number, number]) => [anchor.x + x, anchor.y + y] as RawPoint),
+      `text:${text}:stroke:${index}:${path.character}`,
+      "#3558d4",
+      Math.max(2, size * 0.085),
+    ),
+    groupId,
+  }));
+}
+
+export function generateArrow(from: { x: number; y: number }, to: { x: number; y: number }): Stroke[] {
+  const groupId = makeId("arrow");
+  return arrow([from.x, from.y], [to.x, to.y], "arrow:custom").map((item) => ({ ...item, groupId }));
 }
 
 export function generateTemplate(

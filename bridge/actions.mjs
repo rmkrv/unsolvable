@@ -70,6 +70,32 @@ export function sanitizeBoardAction(tool, args, allowedStrokeIds) {
       narration: englishSpeech(input.narration),
     };
   }
+  if (tool === "board_write_text") {
+    const text = typeof input.text === "string" ? input.text.trim() : "";
+    if (!text || text.length > 48 || !/^[\x20-\x7E]+$/.test(text)) {
+      throw new Error("Write one line of 1 to 48 printable ASCII characters.");
+    }
+    return {
+      type: "text",
+      text,
+      anchor: {
+        x: boundedNumber(input.anchor?.x, -20_000, 20_000, 640),
+        y: boundedNumber(input.anchor?.y, -20_000, 20_000, 420),
+      },
+      size: boundedNumber(input.size, 14, 34, 22),
+      narration: englishSpeech(input.narration),
+    };
+  }
+  if (tool === "board_draw_arrow") {
+    const from = input.from;
+    const to = input.to;
+    if (![from?.x, from?.y, to?.x, to?.y].every((value) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= 20_000)) {
+      throw new Error("Arrow endpoints must be finite board coordinates within ±20000.");
+    }
+    const length = Math.hypot(to.x - from.x, to.y - from.y);
+    if (length < 12 || length > 1200) throw new Error("Arrow length must be between 12 and 1200 board units.");
+    return { type: "arrow", from: { x: from.x, y: from.y }, to: { x: to.x, y: to.y }, narration: englishSpeech(input.narration) };
+  }
   if (tool === "board_feedback") {
     const requested = stringList(input.strokeIds, 40);
     return {
@@ -123,6 +149,42 @@ export const dynamicTools = [
         narration: { type: "string" },
       },
       required: ["text", "nearStrokeIds", "narration"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "board_write_text",
+    description: "Write one short plain-text label at an explicit board coordinate as editable grouped pen strokes. Use for labels that do not belong to a fixed template. Printable ASCII only; no math layout. Leave narration empty if another action speaks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", minLength: 1, maxLength: 48 },
+        anchor: {
+          type: "object",
+          properties: { x: { type: "number" }, y: { type: "number" } },
+          required: ["x", "y"],
+          additionalProperties: false,
+        },
+        size: { type: "number", minimum: 14, maximum: 34 },
+        narration: { type: "string" },
+      },
+      required: ["text", "anchor", "narration"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "board_draw_arrow",
+    description: "Draw one editable arrow between explicit board coordinates. Use only when a fixed diagram template does not fit. The arrow is not attached to other objects. Leave narration empty if another action speaks.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"], additionalProperties: false },
+        to: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"], additionalProperties: false },
+        narration: { type: "string" },
+      },
+      required: ["from", "to", "narration"],
       additionalProperties: false,
     },
   },
@@ -194,7 +256,7 @@ export const dynamicTools = [
   {
     type: "function",
     name: "board_erase",
-    description: "Erase only identified AI-created or obsolete feedback strokes. Write speech in English.",
+    description: "Erase identified AI-created or obsolete feedback strokes. One stroke ID removes its entire grouped label or arrow. Write speech in English.",
     inputSchema: {
       type: "object",
       properties: {

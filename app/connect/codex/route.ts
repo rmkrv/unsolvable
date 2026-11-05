@@ -11,7 +11,7 @@ export async function GET() {
     );
   }
 
-  const prompt = `[@Unsolvable](plugin://${pluginId}) Observe my Unsolvable engineering board, use its deterministic verifier before judging supported algebra, and wait for meaningful board changes.`;
+  const prompt = `[@Unsolvable](plugin://${pluginId}) Observe my Unsolvable engineering board, use its deterministic verifier before judging supported algebra, and wait for meaningful board changes. Use the fewest board actions needed; check the available tools before saying a requested diagram cannot be drawn.`;
   const location = `codex://new?prompt=${encodeURIComponent(prompt)}`;
   return new Response(null, {
     status: 302,

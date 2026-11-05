@@ -35,8 +35,29 @@ import {
   type Point,
   type Stroke,
   type Viewport,
-} from "@/lib/board-model";
-import { generateFeedbackStroke, generateHandwriting, generateTemplate, measureHandwriting } from "@/lib/trajectory-generator";
+} from "@/lib/domain/board/model";
+import {
+  aggregateStrokeBounds,
+  clamp,
+  copyPages,
+  parseClipboardStrokes,
+  selectedStrokes,
+  strokeSelectionIds,
+} from "@/lib/domain/board/operations";
+import type { BoardAction } from "@/lib/domain/tutor/board-action";
+import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
+import { renderBoardCanvas } from "@/lib/client/board/canvas-renderer";
+import {
+  getOrCreateBoardId,
+  readActionCursor,
+  readBoardColor,
+  readLocalBoard,
+  writeActionCursor,
+  writeBoardColor,
+  writeLocalBoard,
+} from "@/lib/client/board/local-board-store";
+import { createTutorTransport } from "@/lib/client/tutor/tutor-transport";
+import { generateArrow, generateFeedbackStroke, generateHandwriting, generatePlainText, generateTemplate, measureHandwriting } from "@/lib/trajectory-generator";
 import { findFreeHandwritingAnchor } from "@/lib/handwriting-placement.mjs";
 import { createEnglishSpeechController } from "@/lib/english-speech.mjs";
 import { boundsIntersect, buildShapePaths, isEditableTarget, selectionBounds, type ShapeTool } from "@/lib/board-interactions.mjs";
@@ -54,20 +75,32 @@ type DrawingGesture = {
   groupId: string;
   createdAt: number;
 };
-type BoardAction =
-  | { type: "draw"; template: string; anchor: { x: number; y: number }; scale: number; labels: string[]; narration: string }
-  | { type: "write"; text: string; nearStrokeIds: string[]; size: number; narration: string }
-  | { type: "feedback"; verdict: string; mark: string; strokeIds: string[]; color: string; speech: string; hintLevel: number; confidence: number }
-  | { type: "erase"; strokeIds: string[]; speech: string }
-  | { type: "say"; speech: string; tone: string };
-
-const STORAGE_KEY = "vector-tutor-board-v1";
-const BOARD_ID_KEY = "vector-tutor-board-id-v1";
-const ACTION_CURSOR_KEY = "vector-tutor-action-cursor-v1";
-const COLOR_KEY = "vector-tutor-color-v1";
+type SpeechRecognitionResultLike = {
+  readonly isFinal: boolean;
+  readonly 0: { readonly transcript: string };
+};
+type SpeechRecognitionEventLike = { readonly results: ArrayLike<SpeechRecognitionResultLike> };
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
-const LOCAL_CODEX_BRIDGE = import.meta.env.VITE_TUTOR_BRIDGE_URL as string | undefined;
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
+const boardGateway = createHttpBoardGateway();
+const tutorTransport = createTutorTransport(import.meta.env.VITE_TUTOR_BRIDGE_URL as string | undefined);
+const localTutor = tutorTransport.mode === "local";
 
 const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut?: string; ariaShortcut?: string }[] = [
   { id: "select", label: "Select", icon: MousePointer2, shortcut: "Ctrl/⌘ V", ariaShortcut: "Control+V Meta+V" },
@@ -81,55 +114,6 @@ const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut?: st
   { id: "hand", label: "Pan", icon: Hand, shortcut: "Space", ariaShortcut: "Space" },
 ];
 
-function clamp(value: number, minimum: number, maximum: number) {
-  return Math.max(minimum, Math.min(maximum, value));
-}
-
-function copyPages(pages: Page[]) {
-  return pages.map((page) => ({
-    ...page,
-    strokes: page.strokes.map((stroke) => ({
-      ...stroke,
-      points: stroke.points.map((point) => ({ ...point })),
-    })),
-  }));
-}
-
-function selectedStrokes(page: Page | undefined, selectedIds: string[]) {
-  if (!page || !selectedIds.length) return [];
-  const ids = new Set(selectedIds);
-  const groups = new Set(
-    page.strokes.filter((stroke) => ids.has(stroke.id) && stroke.groupId).map((stroke) => stroke.groupId),
-  );
-  return page.strokes.filter((stroke) => ids.has(stroke.id) || Boolean(stroke.groupId && groups.has(stroke.groupId)));
-}
-
-function strokeSelectionIds(page: Page, stroke: Stroke) {
-  return stroke.groupId
-    ? page.strokes.filter((candidate) => candidate.groupId === stroke.groupId).map((candidate) => candidate.id)
-    : [stroke.id];
-}
-
-function parseClipboardStrokes(raw: string) {
-  try {
-    const value = JSON.parse(raw) as { strokes?: Stroke[] };
-    if (!Array.isArray(value.strokes)) return [];
-    return value.strokes.filter((stroke) =>
-      stroke
-      && typeof stroke.id === "string"
-      && typeof stroke.color === "string"
-      && Number.isFinite(stroke.width)
-      && Number.isFinite(stroke.opacity)
-      && ["pen", "highlighter", "feedback"].includes(stroke.kind)
-      && Array.isArray(stroke.points)
-      && stroke.points.every((point) =>
-        Number.isFinite(point?.x) && Number.isFinite(point?.y) && Number.isFinite(point?.pressure) && Number.isFinite(point?.t),
-      ),
-    );
-  } catch {
-    return [];
-  }
-}
 
 function ToolButton({
   active,
@@ -168,16 +152,6 @@ function worldPoint(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCa
   };
 }
 
-function aggregateBounds(strokes: Stroke[]) {
-  if (!strokes.length) return null;
-  const boxes = strokes.map(strokeBounds);
-  const x = Math.min(...boxes.map((box) => box.x));
-  const y = Math.min(...boxes.map((box) => box.y));
-  const right = Math.max(...boxes.map((box) => box.x + box.width));
-  const bottom = Math.max(...boxes.map((box) => box.y + box.height));
-  return { x, y, width: right - x, height: bottom - y };
-}
-
 export default function TutorBoard({ displayName }: { displayName: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -213,7 +187,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const renderFrameRef = useRef<number | null>(null);
   const animationRef = useRef<AbortController | null>(null);
   const turnRef = useRef<AbortController | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechRef = useRef<ReturnType<typeof createEnglishSpeechController> | null>(null);
   const observationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionCountRef = useRef(0);
@@ -246,32 +220,37 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   }, [activePageId]);
 
   useEffect(() => {
-    const saved = localStorage.getItem(COLOR_KEY);
-    if (saved && /^#[0-9a-f]{6}$/i.test(saved)) setColor(saved);
+    const saved = readBoardColor(localStorage);
+    if (!saved) return;
+    const frame = requestAnimationFrame(() => setColor(saved));
+    return () => cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(COLOR_KEY, color);
+    writeBoardColor(localStorage, color);
   }, [color]);
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = readLocalBoard(localStorage);
       if (!saved) return;
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed.pages) && parsed.pages.length) {
-        setPages(parsed.pages);
-        setActivePageId(parsed.activePageId || parsed.pages[0].id);
-        setHintLevel(clamp(Number(parsed.hintLevel) || 2, 0, 5));
-      }
+      const frame = requestAnimationFrame(() => {
+        setPages(saved.pages);
+        setActivePageId(saved.activePageId);
+        setHintLevel(saved.hintLevel);
+      });
+      return () => cancelAnimationFrame(frame);
     } catch {
-      setToast("The saved board could not be restored; a fresh board is open.");
+      const frame = requestAnimationFrame(() => {
+        setToast("The saved board could not be restored; a fresh board is open.");
+      });
+      return () => cancelAnimationFrame(frame);
     }
   }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ pages, activePageId, hintLevel }));
+      writeLocalBoard(localStorage, { pages, activePageId, hintLevel });
     }, 250);
     return () => clearTimeout(timer);
   }, [activePageId, hintLevel, pages]);
@@ -280,100 +259,16 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     const canvas = canvasRef.current;
     const stage = stageRef.current;
     if (!canvas || !stage) return;
-    const rect = stage.getBoundingClientRect();
-    const ratio = Math.max(1, window.devicePixelRatio || 1);
-    const width = Math.max(1, Math.round(rect.width * ratio));
-    const height = Math.max(1, Math.round(rect.height * ratio));
-    if (canvas.width !== width || canvas.height !== height) {
-      canvas.width = width;
-      canvas.height = height;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-    }
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.clearRect(0, 0, rect.width, rect.height);
-    context.fillStyle = "#fbfaf6";
-    context.fillRect(0, 0, rect.width, rect.height);
-
-    const currentView = viewRef.current;
-    const minor = 24 * currentView.zoom;
-    const major = minor * 5;
-    const offsetX = ((currentView.x % minor) + minor) % minor;
-    const offsetY = ((currentView.y % minor) + minor) % minor;
-    context.lineWidth = 1;
-    for (let x = offsetX; x < rect.width; x += minor) {
-      context.strokeStyle = Math.abs(((x - currentView.x) % major + major) % major) < 1 ? "#d9d6cd" : "#ebe8df";
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, rect.height);
-      context.stroke();
-    }
-    for (let y = offsetY; y < rect.height; y += minor) {
-      context.strokeStyle = Math.abs(((y - currentView.y) % major + major) % major) < 1 ? "#d9d6cd" : "#ebe8df";
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(rect.width, y);
-      context.stroke();
-    }
-
     const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current) ?? pagesRef.current[0];
-    const strokes = [...(page?.strokes ?? [])];
-    strokes.push(...currentStrokesRef.current);
-    for (const stroke of strokes) {
-      if (stroke.points.length < 2) continue;
-      context.save();
-      context.globalAlpha = stroke.opacity;
-      context.strokeStyle = stroke.color;
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      for (let index = 1; index < stroke.points.length; index += 1) {
-        const a = stroke.points[index - 1];
-        const b = stroke.points[index];
-        context.lineWidth = Math.max(1, stroke.width * ((a.pressure + b.pressure) / 2) * currentView.zoom);
-        context.beginPath();
-        context.moveTo(a.x * currentView.zoom + currentView.x, a.y * currentView.zoom + currentView.y);
-        context.quadraticCurveTo(
-          a.x * currentView.zoom + currentView.x,
-          a.y * currentView.zoom + currentView.y,
-          b.x * currentView.zoom + currentView.x,
-          b.y * currentView.zoom + currentView.y,
-        );
-        context.stroke();
-      }
-      context.restore();
-    }
-
-    if (selectedIds.length) {
-      const selected = selectedStrokes(page, selectedIds);
-      if (selected.length) {
-        const box = aggregateBounds(selected)!;
-        context.save();
-        context.strokeStyle = "#3558d4";
-        context.lineWidth = 1.25;
-        context.setLineDash([5, 4]);
-        context.strokeRect(
-          box.x * currentView.zoom + currentView.x - 7,
-          box.y * currentView.zoom + currentView.y - 7,
-          box.width * currentView.zoom + 14,
-          box.height * currentView.zoom + 14,
-        );
-        context.restore();
-      }
-    }
-
-    if (selectionBoxRef.current) {
-      const box = selectionBounds(selectionBoxRef.current.start, selectionBoxRef.current.current);
-      context.save();
-      context.fillStyle = "rgba(53, 88, 212, 0.08)";
-      context.strokeStyle = "#3558d4";
-      context.lineWidth = 1;
-      context.setLineDash([5, 4]);
-      context.fillRect(box.x * currentView.zoom + currentView.x, box.y * currentView.zoom + currentView.y, box.width * currentView.zoom, box.height * currentView.zoom);
-      context.strokeRect(box.x * currentView.zoom + currentView.x, box.y * currentView.zoom + currentView.y, box.width * currentView.zoom, box.height * currentView.zoom);
-      context.restore();
-    }
+    renderBoardCanvas({
+      canvas,
+      stage,
+      page,
+      previewStrokes: currentStrokesRef.current,
+      selectedIds,
+      selectionBox: selectionBoxRef.current,
+      viewport: viewRef.current,
+    });
   }, [selectedIds]);
 
   const requestRender = useCallback(() => {
@@ -793,7 +688,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         const canvas = canvasRef.current;
         if (!page || !canvas) return;
         const nearby = page.strokes.filter((stroke) => action.nearStrokeIds.includes(stroke.id));
-        const target = aggregateBounds(nearby);
+        const target = aggregateStrokeBounds(nearby);
         const view = viewRef.current;
         const rect = canvas.getBoundingClientRect();
         const viewport = {
@@ -820,10 +715,20 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         setToast("Unsolvable added editable pen strokes to the shared board.");
         return;
       }
+      if (action.type === "text") {
+        await animateStrokes(generatePlainText(action.text, action.anchor, action.size), action.narration);
+        setToast("Unsolvable added an editable text label to the board.");
+        return;
+      }
+      if (action.type === "arrow") {
+        await animateStrokes(generateArrow(action.from, action.to), action.narration);
+        setToast("Unsolvable added an editable arrow to the board.");
+        return;
+      }
       if (action.type === "feedback") {
         const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current);
         const targets = page?.strokes.filter((stroke) => action.strokeIds.includes(stroke.id)) ?? [];
-        const bounds = aggregateBounds(targets);
+        const bounds = aggregateStrokeBounds(targets);
         if (bounds && (action.verdict !== "uncertain" || action.confidence >= 0.6)) {
           await animateStrokes(generateFeedbackStroke(action.mark, bounds, action.color), action.speech);
         } else speak(action.speech);
@@ -840,14 +745,17 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
         commitPages((previous) =>
           previous.map((page) =>
             page.id === activePageIdRef.current
-              ? {
-                  ...page,
-                  strokes: page.strokes.filter(
-                    (stroke) =>
-                      !action.strokeIds.includes(stroke.id) ||
-                      (stroke.author !== "ai" && stroke.kind !== "feedback"),
-                  ),
-                }
+              ? (() => {
+                  const selected = page.strokes.filter((stroke) => action.strokeIds.includes(stroke.id));
+                  const groups = new Set(selected.map((stroke) => stroke.groupId).filter(Boolean));
+                  return {
+                    ...page,
+                    strokes: page.strokes.filter((stroke) =>
+                      (stroke.author !== "ai" && stroke.kind !== "feedback") ||
+                      (!action.strokeIds.includes(stroke.id) && !Boolean(stroke.groupId && groups.has(stroke.groupId))),
+                    ),
+                  };
+                })()
               : page,
           ),
         );
@@ -863,25 +771,14 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     async (captureSnapshot = false) => {
       if (!sessionId) return null;
       const snapshotDataUrl = captureSnapshot ? canvasRef.current?.toDataURL("image/png") : undefined;
-      const response = await fetch("/api/board", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          boardId: sessionId,
-          state: {
-            boardId: sessionId,
-            pages: pagesRef.current,
-            activePageId: activePageIdRef.current,
-            viewport: viewRef.current,
-            hintLevel,
-            request: requestRef.current,
-          },
-          snapshotDataUrl,
-        }),
-      });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Could not sync the shared board.");
-      return payload;
+      return boardGateway.save({
+        boardId: sessionId,
+        pages: pagesRef.current,
+        activePageId: activePageIdRef.current,
+        viewport: viewRef.current,
+        hintLevel,
+        request: requestRef.current,
+      }, snapshotDataUrl);
     },
     [hintLevel, sessionId],
   );
@@ -895,13 +792,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       if (polling) return;
       polling = true;
       try {
-        const response = await fetch(`/api/board?after=${lastActionIdRef.current}`, { cache: "no-store" });
-        const payload = await response.json() as {
-          error?: string;
-          board?: { state?: { pages?: Page[]; activePageId?: string; hintLevel?: number }; lastMcpAt?: number };
-          actions?: Array<{ id: number; value: BoardAction }>;
-        };
-        if (!response.ok) throw new Error(payload.error || "Shared board unavailable");
+        const payload = await boardGateway.read(lastActionIdRef.current);
         if (disposed) return;
         if (restore && payload.board?.state?.pages?.length) {
           setPages(payload.board.state.pages);
@@ -912,23 +803,23 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           // Existing boards predate the stored cursor. Treat their queued actions
           // as historical so a refresh cannot replay old drawing or speech.
           lastActionIdRef.current = Math.max(lastActionIdRef.current, ...((payload.actions || []).map((action) => action.id)));
-          localStorage.setItem(`${ACTION_CURSOR_KEY}:${boardId}`, String(lastActionIdRef.current));
+          writeActionCursor(localStorage, boardId, lastActionIdRef.current);
           hasActionCursorRef.current = true;
         }
-        if (!LOCAL_CODEX_BRIDGE) {
+        if (!localTutor) {
           const recentlyUsed = Date.now() - Number(payload.board?.lastMcpAt || 0) < 120_000;
           setBridgeState((current) => current === "drawing" ? current : recentlyUsed ? "ready" : "offline");
         }
         const processActions = async () => {
-          const sharedCursor = Number(localStorage.getItem(`${ACTION_CURSOR_KEY}:${boardId}`));
-          if (Number.isSafeInteger(sharedCursor) && sharedCursor >= 0) {
+          const sharedCursor = readActionCursor(localStorage, boardId);
+          if (sharedCursor !== null) {
             lastActionIdRef.current = Math.max(lastActionIdRef.current, sharedCursor);
           }
           for (const queued of payload.actions || []) {
             if (queued.id <= lastActionIdRef.current) continue;
             await handleAction(queued.value);
             lastActionIdRef.current = queued.id;
-            localStorage.setItem(`${ACTION_CURSOR_KEY}:${boardId}`, String(queued.id));
+            writeActionCursor(localStorage, boardId, queued.id);
           }
         };
         if (navigator.locks) {
@@ -943,22 +834,17 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
     async function connect() {
       setBridgeState("connecting");
-      let boardId = localStorage.getItem(BOARD_ID_KEY);
-      if (!boardId) {
-        boardId = makeId("board");
-        localStorage.setItem(BOARD_ID_KEY, boardId);
-      }
+      const boardId = getOrCreateBoardId(localStorage, () => makeId("board"));
       setSessionId(boardId);
-      const storedCursor = Number(localStorage.getItem(`${ACTION_CURSOR_KEY}:${boardId}`));
-      hasActionCursorRef.current = Number.isSafeInteger(storedCursor) && storedCursor >= 0 && localStorage.getItem(`${ACTION_CURSOR_KEY}:${boardId}`) !== null;
-      lastActionIdRef.current = hasActionCursorRef.current ? storedCursor : 0;
-      setModel(LOCAL_CODEX_BRIDGE ? "Codex local" : "Codex MCP");
+      const storedCursor = readActionCursor(localStorage, boardId);
+      hasActionCursorRef.current = storedCursor !== null;
+      lastActionIdRef.current = storedCursor ?? 0;
+      setModel(tutorTransport.label);
       try {
         await readSharedBoard(boardId, true);
         if (!disposed) {
-          if (LOCAL_CODEX_BRIDGE) {
-            const response = await fetch(`${LOCAL_CODEX_BRIDGE}/status`);
-            const status = await response.json() as { ready?: boolean; error?: string };
+          if (localTutor) {
+            const status = await tutorTransport.status();
             setBridgeState(status.ready ? "ready" : "offline");
             if (!status.ready && status.error) setToast(status.error);
           } else setBridgeState((current) => (current === "ready" ? current : "offline"));
@@ -994,10 +880,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     animationRef.current?.abort();
     turnRef.current?.abort();
     speechRef.current?.stop();
-    if (LOCAL_CODEX_BRIDGE && sessionId) {
-      await fetch(`${LOCAL_CODEX_BRIDGE}/interrupt`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ boardId: sessionId }),
-      }).catch(() => undefined);
+    if (localTutor && sessionId) {
+      await tutorTransport.interrupt(sessionId).catch(() => undefined);
     }
     setBridgeState((current) => (current === "offline" ? "offline" : sessionId ? "ready" : "offline"));
     setToast("Stopped. Your current board work is preserved.");
@@ -1011,22 +895,15 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       }
       if (bridgeState === "thinking" || bridgeState === "drawing") await interrupt();
       requestRef.current = { message: message.slice(0, 800), trigger, at: Date.now() };
-      setToast(LOCAL_CODEX_BRIDGE ? "Codex is checking your board…" : "Request shared. Continue in your Codex tutor chat to let Unsolvable respond.");
+      setToast(localTutor ? "Codex is checking your board…" : "Request shared. Continue in your Codex tutor chat to let Unsolvable respond.");
       try {
         await syncBoard(true);
-        if (LOCAL_CODEX_BRIDGE) {
+        if (localTutor) {
           setBridgeState("thinking");
           const controller = new AbortController();
           turnRef.current = controller;
-          const response = await fetch(`${LOCAL_CODEX_BRIDGE}/turn`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ boardId: sessionId, message, trigger }),
-            signal: controller.signal,
-          });
+          const result = await tutorTransport.sendTurn({ boardId: sessionId, message, trigger }, controller.signal);
           if (turnRef.current === controller) turnRef.current = null;
-          const result = await response.json() as { reply?: string; error?: string };
-          if (!response.ok) throw new Error(result.error || "Codex could not complete this turn.");
           setBridgeState("ready");
           if (result.reply) setToast(result.reply.slice(0, 280));
         } else if (bridgeState === "offline") setConnectionOpen(true);
@@ -1293,7 +1170,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const resetView = () => setView({ x: 86, y: 70, zoom: 1 });
 
   const startVoice = async () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as SpeechRecognitionWindow;
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       setToast("Speech recognition is not available in this browser. Type a short request instead.");
       return;
@@ -1311,9 +1189,9 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       setIsListening(true);
       setToast("Listening… speak naturally.");
     };
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       const transcript = Array.from(event.results)
-        .map((result: any) => result[0].transcript)
+        .map((result) => result[0].transcript)
         .join(" ");
       setPrompt(transcript);
       if (event.results[event.results.length - 1].isFinal) {
@@ -1434,10 +1312,10 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           <section className="connection-dialog" role="dialog" aria-modal="true" aria-labelledby="connect-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="connection-close" type="button" aria-label="Close" onClick={() => setConnectionOpen(false)}><X size={18} /></button>
             <div className="connection-icon"><Cable size={22} /></div>
-            <p>{LOCAL_CODEX_BRIDGE ? "Local connection" : "One-time setup"}</p>
-            <h2 id="connect-title">{LOCAL_CODEX_BRIDGE ? "Codex on this computer" : "Open Unsolvable in Codex"}</h2>
+            <p>{localTutor ? "Local connection" : "One-time setup"}</p>
+            <h2 id="connect-title">{localTutor ? "Codex on this computer" : "Open Unsolvable in Codex"}</h2>
             <div className="connection-copy">
-              {LOCAL_CODEX_BRIDGE
+              {localTutor
                 ? "Unsolvable uses the Codex installation and ChatGPT sign-in already on this computer. Close this window and press Check work to start a turn."
                 : <>Open Codex Settings → MCP servers → Add server. Choose Streamable HTTP and enter <code>http://127.0.0.1:5173/mcp</code>.</>}
             </div>
@@ -1445,7 +1323,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
               <strong>{bridgeState === "ready" ? "Connection detected" : "Codex is not ready"}</strong>
               <span>Signed in as {displayName}. No API key is needed.</span>
             </div>
-            {LOCAL_CODEX_BRIDGE ? (
+            {localTutor ? (
               <button className="connection-done" type="button" onClick={() => setConnectionOpen(false)}>Start using Unsolvable</button>
             ) : (
               <button className="connection-done" type="button" onClick={() => { navigator.clipboard.writeText("http://127.0.0.1:5173/mcp").then(() => setToast("Local MCP address copied.")).catch(() => undefined); }}>Copy MCP address</button>

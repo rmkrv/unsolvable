@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { isSameOrigin, requireRequestUserId } from "@/lib/request-user";
-import { readTutorActions, readTutorBoard, saveTutorBoard } from "@/lib/tutor-store";
+import { isSameOrigin, requireRequestUserId } from "@/lib/server/auth/request-identity";
+import { readTutorActions, readTutorBoard, saveTutorBoard } from "@/lib/server/boards/board-service";
 
 export const dynamic = "force-dynamic";
 

@@ -1,35 +1,97 @@
-# Architecture
+# Unsolvable architecture
 
-## 1. Codex integration boundary
+Unsolvable is a private, cloud-first full-stack application. The repository is intentionally a single deployable application today, with boundaries that can be moved into a monorepo later without rewriting the board domain.
 
-Unsolvable has a local Codex CLI bridge and a Site-hosted MCP server. Local development starts Codex from the board using the existing host sign-in and passes the board MCP endpoint to the turn. Publishing `.openai/hosting.json` with `"capabilities": ["mcp"]` creates the owner's private plugin for hosted use.
+## Dependency direction
 
-The stateless `POST /mcp` route implements protocol version `2026-07-28`: `server/discover`, `tools/list`, and `tools/call`.
+```text
+app + components
+      |
+      v
+lib/client ---------> lib/domain <--------- lib/server
+                           ^
+                           |
+                    provider contracts
+```
 
-Sites authenticates hosted calls before forwarding them. The route uses `oai-authenticated-user-id` to select the same D1 board record used by the signed-in browser. Local preview uses a loopback-only identity and the local bridge runs Codex CLI with the existing host sign-in. No API key or copied ChatGPT credential is involved.
+- `lib/domain` owns board data, board operations, and tutor commands. It must not import React, Next.js, Cloudflare, databases, billing, authentication, or network clients.
+- `lib/client` owns browser storage, canvas rendering, HTTP gateways, and tutor transports.
+- `lib/server` owns request identity, application services, repository contracts, and infrastructure adapters.
+- `app` contains delivery concerns: pages and HTTP/MCP route handlers.
+- `components` compose UI state with domain functions and client adapters.
+- `worker` is the Cloudflare runtime entry point.
+- `db` owns the current physical schema. Schema migration to PostgreSQL is a separate infrastructure change.
 
-## 2. Durable shared state
+`tests/architecture.test.mjs` enforces the most important dependency rules.
 
-`tutor_boards` stores the active board JSON, a bounded PNG snapshot, event version, and last MCP activity per Site-scoped user. `tutor_actions` is an ordered Codex-to-browser action queue. Browser writes are same-origin, size-bounded, and authenticated.
+## Current runtime adapters
 
-The browser polls for new actions and applies them through the same renderer used for student work. The current implementation supports one active board per Site user; `boardId` keeps action routing explicit and allows a future multi-board index.
+The refactor preserves the deployed behavior while placing it behind replaceable boundaries:
 
-## 3. Board model and drawing
+| Capability | Contract or entry point | Current adapter | Planned cloud adapter |
+| --- | --- | --- | --- |
+| Board model | `lib/domain/board/model.ts` | Provider-independent | Same package |
+| Board persistence | `lib/server/boards/board-repository.ts` | D1 | Neon PostgreSQL |
+| Browser board sync | `lib/client/board/board-gateway.ts` | `/api/board` polling | HTTP bootstrap + Durable Object WebSocket |
+| Browser recovery | `lib/client/board/local-board-store.ts` | `localStorage` | Keep as offline recovery |
+| Tutor transport | `lib/client/tutor/tutor-transport.ts` | Local Codex or hosted MCP | OpenAI Responses and Realtime APIs |
+| Request identity | `lib/server/auth/*` | Sites authentication headers | Neon Auth session/JWT |
+| Canvas | `lib/client/board/canvas-renderer.ts` | Canvas 2D | Same renderer fed by synchronized state |
 
-Every mark is a `Stroke` containing time-ordered `(x, y, pressure, t)` samples, style, author, timestamps, optional semantic metadata, and a stable ID. Selection, movement, erasure, undo/redo, persistence, hit-testing, and Codex references all operate on those objects.
+Compatibility facades such as `lib/board-model.ts`, `lib/tutor-store.ts`, `lib/request-user.ts`, and `app/chatgpt-auth.ts` keep older imports working while new code uses the layered paths.
 
-Codex can request bounded semantic templates such as axes, parabola, free-body diagram, projectile, phasor, energy bars, or series circuit. `lib/trajectory-generator.ts` owns the actual trajectories, pressure variation, glyphs, and arrows. Finished AI work remains editable.
+## Board persistence flow
 
-`board_write_equation` uses the same editable pen strokes to handwrite a correction. The client places it near the referenced mistake in free space. A Script Simplex stroke font preserves lowercase letters, and the math layout raises powers, lowers subscripts, and stacks fractions. Numeric corrections are checked before queueing, so a false arithmetic equation is refused.
+```text
+TutorBoard
+  -> BoardGateway
+  -> /api/board
+  -> board service
+  -> BoardRepository
+  -> D1BoardRepository (current)
+```
 
-## 4. Observation and correctness
+The Neon migration replaces only the final repository adapter and database schema. The page, canvas, client gateway, and route-level application behavior should not need to change.
 
-`observe_board` returns a compact multipage scene graph with exact stroke IDs, viewport, and the latest canvas PNG. The model uses `verify_math_step` for transformations and `verify_arithmetic_equation` for numeric equalities. Unsupported notation returns `unknown` rather than guessing.
+## Tutor flow
 
-Visual actions are validated against known stroke IDs. Drawing templates, anchors, scales, label counts, speech length, and confidence values are bounded before they enter the queue.
+Board actions are provider-independent commands. The current Codex/MCP integration validates an action, writes it to the action queue, and the browser applies it through the same renderer used for student work.
 
-## 5. Voice and scheduling
+The production AI adapter will replace the transport and queue mechanism, but it must continue to emit the same validated domain commands. AI actions must not directly manipulate React state, Canvas APIs, or database rows.
 
-Speech recognition and synthesis use browser Web Speech. Drawing narration begins with trajectory animation, and local interruption cancels speech and the remaining animation while preserving completed marks.
+## Authentication boundary
 
-MCP is request-driven. In local mode, the board asks the loopback bridge to start a Codex turn; the turn calls `observe_board` and board tools. A published Site MCP connection still needs an active Codex chat because the Site cannot initiate turns by itself.
+Routes use `lib/server/auth/request-identity.ts` instead of reading provider headers directly. Server-rendered pages use `lib/server/auth/current-user.ts`. The current implementation reads Sites headers; Neon Auth can replace those implementations without changing board services or UI components.
+
+Authentication establishes identity. Board ownership and collaboration roles remain separate application authorization checks.
+
+## Testing
+
+Run the complete local verification suite with:
+
+```bash
+npm run check
+```
+
+The layers are tested as follows:
+
+- Domain: deterministic unit tests without browser or cloud services.
+- Architecture: dependency and adapter-boundary tests.
+- Client adapters: deterministic tests with injected `fetch` and storage implementations.
+- Repository adapters: a shared contract suite, first against D1 and later against Neon.
+- Routes: integration tests for identity, validation, and error mapping.
+- Product: staging smoke tests and browser end-to-end tests.
+
+## Planned extraction path
+
+Do not introduce a workspace until there are at least two independently deployed applications. When that threshold is reached, the current boundaries map to:
+
+```text
+apps/web                 <- app, components, worker
+apps/api                 <- optional independently deployed API
+packages/board-core      <- lib/domain/board
+packages/tutor-protocol  <- lib/domain/tutor
+packages/cloud           <- selected lib/server adapters; stays private
+```
+
+Public packages must never import `packages/cloud`. This preserves the option to open-source the board engine later without exposing production authentication, billing, data, or deployment code.
