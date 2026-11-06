@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       !request.headers.get("origin");
     const userId = isLocalDevelopment
       ? request.headers.get("oai-authenticated-user-id") ?? "local_seedy"
-      : requireRequestUserId(request);
+      : await requireRequestUserId();
     if (body?.method === "initialize") {
       return rpcResult(id, {
         protocolVersion: "2025-06-18",

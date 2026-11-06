@@ -1,5 +1,6 @@
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { safeReturnPath } from "@/lib/auth/return-path";
+import { auth } from "@/lib/server/auth/neon";
 
 export type AuthenticatedUser = {
   userId: string;
@@ -8,27 +9,18 @@ export type AuthenticatedUser = {
   fullName: string | null;
 };
 
-const USER_ID_HEADER = "oai-authenticated-user-id";
-const USER_EMAIL_HEADER = "oai-authenticated-user-email";
-const USER_FULL_NAME_HEADER = "oai-authenticated-user-full-name";
-const USER_FULL_NAME_ENCODING_HEADER = "oai-authenticated-user-full-name-encoding";
-const PERCENT_ENCODED_UTF8 = "percent-encoded-utf-8";
-const SIGN_IN_PATH = "/signin-with-chatgpt";
-const SIGN_OUT_PATH = "/signout-with-chatgpt";
-const CALLBACK_PATH = "/callback";
-
 export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get(USER_ID_HEADER);
-  const email = requestHeaders.get(USER_EMAIL_HEADER);
-  if (!userId || !email) return null;
+  const { data: session } = await auth.getSession();
+  const user = session?.user;
+  if (!user?.id || !user.email) return null;
 
-  const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
-  const fullName = encodedFullName && requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === PERCENT_ENCODED_UTF8
-    ? safeDecodeURIComponent(encodedFullName)
-    : null;
-
-  return { userId, displayName: fullName ?? email, email, fullName };
+  const fullName = user.name?.trim() || null;
+  return {
+    userId: user.id,
+    displayName: fullName ?? user.email,
+    email: user.email,
+    fullName,
+  };
 }
 
 export async function requireCurrentUser(returnTo: string): Promise<AuthenticatedUser> {
@@ -38,33 +30,9 @@ export async function requireCurrentUser(returnTo: string): Promise<Authenticate
 }
 
 export function signInPath(returnTo: string): string {
-  return `${SIGN_IN_PATH}?return_to=${encodeURIComponent(safeRelativeReturnPath(returnTo))}`;
+  return `/auth/sign-in?redirectTo=${encodeURIComponent(safeReturnPath(returnTo))}`;
 }
 
 export function signOutPath(returnTo = "/"): string {
-  return `${SIGN_OUT_PATH}?return_to=${encodeURIComponent(safeRelativeReturnPath(returnTo))}`;
-}
-
-function safeRelativeReturnPath(value: string): string {
-  if (!value.startsWith("/") || value.startsWith("//")) return "/";
-  let url: URL;
-  try {
-    url = new URL(value, "https://app.local");
-  } catch {
-    return "/";
-  }
-  if (url.origin !== "https://app.local" || isReservedAuthPath(url.pathname)) return "/";
-  return `${url.pathname}${url.search}${url.hash}`;
-}
-
-function isReservedAuthPath(pathname: string) {
-  return pathname === SIGN_IN_PATH || pathname === SIGN_OUT_PATH || pathname === CALLBACK_PATH;
-}
-
-function safeDecodeURIComponent(value: string): string | null {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return null;
-  }
+  return `/auth/sign-out?redirectTo=${encodeURIComponent(safeReturnPath(returnTo))}`;
 }

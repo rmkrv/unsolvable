@@ -6,14 +6,14 @@ export const dynamic = "force-dynamic";
 
 function authError(error: unknown) {
   if (error instanceof Error && error.message === "AUTH_REQUIRED") {
-    return NextResponse.json({ error: "Sign in with ChatGPT to use the shared board." }, { status: 401 });
+    return NextResponse.json({ error: "Sign in to use the shared board." }, { status: 401 });
   }
   return null;
 }
 
 export async function GET(request: Request) {
   try {
-    const userId = requireRequestUserId(request);
+    const userId = await requireRequestUserId();
     const board = await readTutorBoard(userId);
     if (!board) return NextResponse.json({ board: null, actions: [] });
 
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   if (!isSameOrigin(request)) return NextResponse.json({ error: "Cross-origin write rejected." }, { status: 403 });
   try {
-    const userId = requireRequestUserId(request);
+    const userId = await requireRequestUserId();
     const raw = await request.text();
     if (raw.length > 1_800_000) return NextResponse.json({ error: "Board state is too large." }, { status: 413 });
     const body = JSON.parse(raw || "{}");

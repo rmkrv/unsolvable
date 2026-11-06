@@ -1,11 +1,11 @@
-const USER_ID_HEADER = "oai-authenticated-user-id";
+import { getCurrentUser } from "@/lib/server/auth/current-user";
 
-export function requestUserId(request: Request): string | null {
-  return request.headers.get(USER_ID_HEADER);
+export async function requestUserId(): Promise<string | null> {
+  return (await getCurrentUser())?.userId ?? null;
 }
 
-export function requireRequestUserId(request: Request): string {
-  const userId = requestUserId(request);
+export async function requireRequestUserId(): Promise<string> {
+  const userId = await requestUserId();
   if (!userId) throw new Error("AUTH_REQUIRED");
   return userId;
 }
