@@ -38,6 +38,7 @@ yarn-error.log*
 # Checkout-local tool state
 /.openai/*
 !/.openai/hosting.json
+/.neon
 /.wrangler/
 /.sites-runtime/
 
