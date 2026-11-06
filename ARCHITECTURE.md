@@ -20,25 +20,25 @@ lib/client ---------> lib/domain <--------- lib/server
 - `app` contains delivery concerns: pages and HTTP/MCP route handlers.
 - `components` compose UI state with domain functions and client adapters.
 - `worker` is the Cloudflare runtime entry point.
-- `db` owns the current physical schema. Schema migration to PostgreSQL is a separate infrastructure change.
+- `db` owns the PostgreSQL schema and the Cloudflare-compatible Neon connection factory.
 
 `tests/architecture.test.mjs` enforces the most important dependency rules.
 
 ## Current runtime adapters
 
-The refactor preserves the deployed behavior while placing it behind replaceable boundaries:
+Runtime providers stay behind replaceable boundaries:
 
 | Capability | Contract or entry point | Current adapter | Planned cloud adapter |
 | --- | --- | --- | --- |
 | Board model | `lib/domain/board/model.ts` | Provider-independent | Same package |
-| Board persistence | `lib/server/boards/board-repository.ts` | D1 | Neon PostgreSQL |
+| Board persistence | `lib/server/boards/board-repository.ts` | Neon PostgreSQL | Same contract, optional extracted API |
 | Browser board sync | `lib/client/board/board-gateway.ts` | `/api/board` polling | HTTP bootstrap + Durable Object WebSocket |
 | Browser recovery | `lib/client/board/local-board-store.ts` | `localStorage` | Keep as offline recovery |
 | Tutor transport | `lib/client/tutor/tutor-transport.ts` | Local Codex or hosted MCP | OpenAI Responses and Realtime APIs |
-| Request identity | `lib/server/auth/*` | Sites authentication headers | Neon Auth session/JWT |
+| Request identity | `lib/server/auth/*` | Neon Auth session | Same provider behind an extracted API if needed |
 | Canvas | `lib/client/board/canvas-renderer.ts` | Canvas 2D | Same renderer fed by synchronized state |
 
-Compatibility facades such as `lib/board-model.ts`, `lib/tutor-store.ts`, `lib/request-user.ts`, and `app/chatgpt-auth.ts` keep older imports working while new code uses the layered paths.
+Compatibility facades such as `lib/board-model.ts`, `lib/tutor-store.ts`, and `lib/request-user.ts` keep older board imports working while new code uses the layered paths.
 
 ## Board persistence flow
 
@@ -48,10 +48,11 @@ TutorBoard
   -> /api/board
   -> board service
   -> BoardRepository
-  -> D1BoardRepository (current)
+  -> PostgresBoardRepository
+  -> Neon PostgreSQL
 ```
 
-The Neon migration replaces only the final repository adapter and database schema. The page, canvas, client gateway, and route-level application behavior should not need to change.
+The repository maps the Neon Auth subject to an internal application user. Personal workspaces are provisioned idempotently on first save. Workspace and board memberships provide authorization independently from authentication.
 
 ## Tutor flow
 
@@ -61,7 +62,7 @@ The production AI adapter will replace the transport and queue mechanism, but it
 
 ## Authentication boundary
 
-Routes use `lib/server/auth/request-identity.ts` instead of reading provider headers directly. Server-rendered pages use `lib/server/auth/current-user.ts`. The current implementation reads Sites headers; Neon Auth can replace those implementations without changing board services or UI components.
+Routes use `lib/server/auth/request-identity.ts` instead of reading provider cookies directly. Server-rendered pages use `lib/server/auth/current-user.ts`. Only `lib/server/auth/neon.ts` configures Neon Auth and Cloudflare bindings.
 
 Authentication establishes identity. Board ownership and collaboration roles remain separate application authorization checks.
 
@@ -78,7 +79,7 @@ The layers are tested as follows:
 - Domain: deterministic unit tests without browser or cloud services.
 - Architecture: dependency and adapter-boundary tests.
 - Client adapters: deterministic tests with injected `fetch` and storage implementations.
-- Repository adapters: a shared contract suite, first against D1 and later against Neon.
+- Repository adapter: a contract suite against an isolated Neon development branch.
 - Routes: integration tests for identity, validation, and error mapping.
 - Product: staging smoke tests and browser end-to-end tests.
 

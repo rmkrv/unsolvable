@@ -1,10 +1,11 @@
 import type { BoardRepository, SaveBoardInput } from "./board-repository";
-import { D1BoardRepository } from "./d1-board-repository";
+import { getDb } from "@/db";
+import { PostgresBoardRepository } from "./postgres-board-repository";
 
 let repository: BoardRepository | null = null;
 
 export function getBoardRepository(): BoardRepository {
-  repository ??= new D1BoardRepository();
+  repository ??= new PostgresBoardRepository(getDb());
   return repository;
 }
 

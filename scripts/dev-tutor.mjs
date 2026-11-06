@@ -1,39 +1,6 @@
-import { spawn, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { spawn } from "node:child_process";
 import process from "node:process";
 import { startLocalCodexBridge } from "./local-codex-bridge.mjs";
-
-const wranglerConfig = "dist/server/wrangler.json";
-
-function run(command, args) {
-  const result = spawnSync(command, args, {
-    cwd: process.cwd(),
-    env: process.env,
-    stdio: "inherit",
-    windowsHide: true,
-  });
-  if (result.status !== 0) process.exit(result.status || 1);
-}
-
-if (!existsSync(wranglerConfig)) {
-  run(process.execPath, ["scripts/run-framework.mjs", "build"]);
-}
-
-run(process.execPath, [
-  "--import",
-  "./scripts/sites-env.mjs",
-  "./node_modules/wrangler/bin/wrangler.js",
-  "d1",
-  "execute",
-  "DB",
-  "--local",
-  "--config",
-  wranglerConfig,
-  "--persist-to",
-  ".wrangler/state",
-  "--file",
-  "drizzle/0000_dizzy_mephisto.sql",
-]);
 
 const bridge = await startLocalCodexBridge();
 console.log(`Unsolvable local Codex bridge: ${bridge.url}`);
