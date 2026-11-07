@@ -288,8 +288,6 @@ It is explicitly not a cartoon classroom, a neon AI dashboard, or a gamified chi
 
 ### Theme direction
 
-> **Product-owner note (2026-11-07):** The current palette is temporary. The product owner explicitly hates the coloring and has asked to leave it in place only while backend work proceeds. Do not treat these colors as approved; revisit the complete color system in a later design pass.
-
 The initial `unsolvable` daisyUI theme should preserve the strongest parts of the existing interface:
 
 | Semantic role | Direction | Provisional reference |
