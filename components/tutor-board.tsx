@@ -49,7 +49,6 @@ import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
 import { renderBoardCanvas } from "@/lib/client/board/canvas-renderer";
 import {
-  getOrCreateBoardId,
   readActionCursor,
   readBoardColor,
   readLocalBoard,
@@ -155,7 +154,7 @@ function worldPoint(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCa
   };
 }
 
-export default function TutorBoard({ displayName }: { displayName: string }) {
+export default function TutorBoard({ displayName, boardId }: { displayName: string; boardId: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<Page[]>([INITIAL_PAGE]);
@@ -236,7 +235,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
   useEffect(() => {
     try {
-      const saved = readLocalBoard(localStorage);
+      const saved = readLocalBoard(localStorage, boardId);
       if (!saved) return;
       const frame = requestAnimationFrame(() => {
         setPages(saved.pages);
@@ -250,14 +249,14 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       });
       return () => cancelAnimationFrame(frame);
     }
-  }, []);
+  }, [boardId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      writeLocalBoard(localStorage, { pages, activePageId, hintLevel });
+      writeLocalBoard(localStorage, { pages, activePageId, hintLevel }, boardId);
     }, 250);
     return () => clearTimeout(timer);
-  }, [activePageId, hintLevel, pages]);
+  }, [activePageId, boardId, hintLevel, pages]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -809,7 +808,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       if (polling) return;
       polling = true;
       try {
-        const payload = await boardGateway.read(lastActionIdRef.current);
+        const payload = await boardGateway.read(boardId, lastActionIdRef.current);
         if (disposed) return;
         const remoteVersion = payload.board?.eventVersion ?? 0;
         const remoteChanged = remoteVersion > serverVersionRef.current;
@@ -853,7 +852,6 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
     async function connect() {
       setBridgeState("connecting");
-      const boardId = getOrCreateBoardId(localStorage, () => makeId("board"));
       setSessionId(boardId);
       const storedCursor = readActionCursor(localStorage, boardId);
       hasActionCursorRef.current = storedCursor !== null;
@@ -878,7 +876,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       disposed = true;
       if (timer) clearInterval(timer);
     };
-  }, [handleAction]);
+  }, [boardId, handleAction]);
 
   useEffect(() => {
     if (!sessionId) return;

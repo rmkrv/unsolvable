@@ -5,13 +5,14 @@ import {
   boardMembers,
   boards,
   tutorActions,
+  userBoardActivity,
   workspaceMembers,
   workspaces,
 } from "../../../db/schema.ts";
-import type { BoardRepository, SaveBoardInput, StoredBoard, StoredTutorAction, UpdateBoardInput } from "./board-repository";
+import type { BoardRepository, BoardSummary, SaveBoardInput, StoredBoard, StoredTutorAction, UpdateBoardInput } from "./board-repository";
 
 type PersonalContext = { userId: string; workspaceId: string };
-type AuthorizedBoard = { id: string; externalId: string; role: string };
+type AuthorizedBoard = { id: string; externalId: string; role: string; eventVersion: number };
 type Database = ReturnType<typeof getDb>;
 
 export class PostgresBoardRepository implements BoardRepository {
@@ -44,6 +45,59 @@ export class PostgresBoardRepository implements BoardRepository {
     return rows[0] ? toStoredBoard(authSubject, rows[0]) : null;
   }
 
+  async listForUser(authSubject: string, limit = 12): Promise<BoardSummary[]> {
+    const rows = await this.db
+      .select({
+        boardId: boards.externalId,
+        title: boards.title,
+        subject: boards.subject,
+        eventVersion: boards.eventVersion,
+        lastOpenedAt: userBoardActivity.lastOpenedAt,
+        updatedAt: boards.updatedAt,
+      })
+      .from(appUsers)
+      .innerJoin(boardMembers, eq(boardMembers.userId, appUsers.id))
+      .innerJoin(boards, eq(boards.id, boardMembers.boardId))
+      .leftJoin(
+        userBoardActivity,
+        and(eq(userBoardActivity.userId, appUsers.id), eq(userBoardActivity.boardId, boards.id)),
+      )
+      .where(eq(appUsers.authSubject, authSubject))
+      .orderBy(desc(sql`coalesce(${userBoardActivity.lastOpenedAt}, ${boards.updatedAt})`))
+      .limit(Math.max(1, Math.min(50, limit)));
+
+    return rows.map((row) => ({
+      boardId: row.boardId,
+      title: row.title,
+      subject: row.subject,
+      eventVersion: row.eventVersion,
+      lastOpenedAt: (row.lastOpenedAt ?? row.updatedAt).getTime(),
+      updatedAt: row.updatedAt.getTime(),
+    }));
+  }
+
+  async markOpened(authSubject: string, boardId: string): Promise<boolean> {
+    const [board, user] = await Promise.all([
+      findAuthorizedBoard(this.db, authSubject, boardId),
+      findAppUser(this.db, authSubject),
+    ]);
+    if (!board || !user) return false;
+    const lastOpenedAt = new Date();
+    await this.db
+      .insert(userBoardActivity)
+      .values({
+        userId: user.id,
+        boardId: board.id,
+        lastOpenedAt,
+        lastViewedEventVersion: board.eventVersion,
+      })
+      .onConflictDoUpdate({
+        target: [userBoardActivity.userId, userBoardActivity.boardId],
+        set: { lastOpenedAt, lastViewedEventVersion: board.eventVersion },
+      });
+    return true;
+  }
+
   async saveForUser(input: SaveBoardInput) {
     if (input.expectedVersion !== undefined) {
       const updated = await this.updateForUser({ ...input, expectedVersion: input.expectedVersion });
@@ -59,6 +113,7 @@ export class PostgresBoardRepository implements BoardRepository {
       .values({
         workspaceId: context.workspaceId,
         externalId: input.boardId,
+        title: input.title?.trim().slice(0, 120) || "Untitled board",
         state,
         snapshotDataUrl: input.snapshotDataUrl,
         eventVersion: 1,
@@ -87,6 +142,19 @@ export class PostgresBoardRepository implements BoardRepository {
       .insert(boardMembers)
       .values({ boardId: board.id, userId: context.userId, role: "owner" })
       .onConflictDoNothing();
+
+    await this.db
+      .insert(userBoardActivity)
+      .values({
+        boardId: board.id,
+        userId: context.userId,
+        lastOpenedAt: now,
+        lastViewedEventVersion: board.eventVersion,
+      })
+      .onConflictDoUpdate({
+        target: [userBoardActivity.userId, userBoardActivity.boardId],
+        set: { lastOpenedAt: now, lastViewedEventVersion: board.eventVersion },
+      });
 
     return {
       eventVersion: board.eventVersion,
@@ -215,7 +283,12 @@ async function findAuthorizedBoard(
   if (externalId) filters.push(eq(boards.externalId, externalId));
 
   const rows = await db
-    .select({ id: boards.id, externalId: boards.externalId, role: boardMembers.role })
+    .select({
+      id: boards.id,
+      externalId: boards.externalId,
+      role: boardMembers.role,
+      eventVersion: boards.eventVersion,
+    })
     .from(appUsers)
     .innerJoin(boardMembers, eq(boardMembers.userId, appUsers.id))
     .innerJoin(boards, eq(boards.id, boardMembers.boardId))

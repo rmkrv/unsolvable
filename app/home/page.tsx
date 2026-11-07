@@ -5,24 +5,47 @@ import {
   Calculator,
   Clock3,
   MoreHorizontal,
-  Plus,
   Sparkles,
   Target,
   Users,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { NewBoardButton } from "@/components/new-board-button";
 import { requireCurrentUser, type AuthenticatedUser } from "@/lib/server/auth/current-user";
+import { listUserBoards } from "@/lib/server/boards/board-service";
+import { getHomeInsights, getUserProfile } from "@/lib/server/users/user-service";
+import type { BoardSummary } from "@/lib/server/boards/board-repository";
+import type { HomeInsights } from "@/lib/server/users/user-repository";
 
 export const dynamic = "force-dynamic";
 
-const recentBoards = [
-  { title: "Limits and continuity", subject: "Calculus", time: "12 minutes ago", mark: "lim x→2", tone: "bg-primary/10 text-primary" },
-  { title: "Quadratic transformations", subject: "Algebra", time: "Yesterday", mark: "f(x−3)", tone: "bg-warning/10 text-warning" },
-  { title: "Forces on an incline", subject: "Mechanics", time: "4 days ago", mark: "ΣF = ma", tone: "bg-success/10 text-success" },
+const previewBoards: BoardSummary[] = [
+  { boardId: "preview-limits", title: "Limits and continuity", subject: "Calculus", lastOpenedAt: Date.now() - 720_000, updatedAt: Date.now() - 720_000, eventVersion: 4 },
+  { boardId: "preview-quadratics", title: "Quadratic transformations", subject: "Algebra", lastOpenedAt: Date.now() - 86_400_000, updatedAt: Date.now() - 86_400_000, eventVersion: 3 },
+  { boardId: "preview-forces", title: "Forces on an incline", subject: "Mechanics", lastOpenedAt: Date.now() - 345_600_000, updatedAt: Date.now() - 345_600_000, eventVersion: 2 },
 ];
 
-export function HomeDashboard({ user }: { user: AuthenticatedUser }) {
+const previewInsights: HomeInsights = {
+  friendCount: 3,
+  pendingRequestCount: 2,
+  weakSpot: { skillId: "factoring", skillName: "Factoring structure", score: 58, confidence: 66, evidenceCount: 3, calculatedAt: Date.now() },
+};
+
+export function HomeDashboard({
+  user,
+  recentBoards = previewBoards,
+  insights = previewInsights,
+  isPreview = true,
+}: {
+  user: AuthenticatedUser;
+  recentBoards?: BoardSummary[];
+  insights?: HomeInsights;
+  isPreview?: boolean;
+}) {
   const firstName = (user.fullName || user.displayName).split(/[\s@]/)[0];
+  const recent = recentBoards[0];
+  const boardHref = recent ? `/boards/${encodeURIComponent(recent.boardId)}` : "/boards/current";
+  const dateLabel = new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
   return (
     <AppShell user={user} active="home" title="Home">
@@ -30,13 +53,13 @@ export function HomeDashboard({ user }: { user: AuthenticatedUser }) {
         <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-base-content/42">Saturday, 7 November</p>
-              <span className="badge badge-outline badge-sm">Design preview</span>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-base-content/42">{dateLabel}</p>
+              {isPreview && <span className="badge badge-outline badge-sm">Design preview</span>}
             </div>
             <h2 className="mt-2 font-serif text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Good to see you, {firstName}.</h2>
             <p className="mt-3 text-base text-base-content/58">Pick up the thread, or start with the idea that needs attention.</p>
           </div>
-          <Link href="/boards/current" className="btn hidden sm:inline-flex"><Plus size={17} /> New board</Link>
+          <NewBoardButton className="btn hidden sm:inline-flex" />
         </div>
 
         <section className="mt-9 grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
@@ -44,15 +67,15 @@ export function HomeDashboard({ user }: { user: AuthenticatedUser }) {
             <div className="card-body min-h-[330px] justify-between p-7 sm:p-9">
               <div className="flex items-start justify-between gap-5">
                 <div>
-                  <span className="badge border-white/15 bg-white/8 text-white/75">Continue practice</span>
-                  <h3 className="mt-5 max-w-2xl font-serif text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">The limit exists. Your factorization needs one repair.</h3>
-                  <p className="mt-4 max-w-xl leading-7 text-neutral-content/62">Resume the board at the first uncertain step. Your earlier pages and tutor context are still there.</p>
+                  <span className="badge border-white/15 bg-white/8 text-white/75">{recent ? "Continue practice" : "Start practicing"}</span>
+                  <h3 className="mt-5 max-w-2xl font-serif text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">{recent ? recent.title : "Open a blank board and work through the difficult part."}</h3>
+                  <p className="mt-4 max-w-xl leading-7 text-neutral-content/62">{recent ? "Your pages and tutor context are ready where you left them." : "Write naturally, ask for a hint when you need one, and keep every step in one place."}</p>
                 </div>
                 <div className="hidden size-16 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 sm:flex"><Sparkles size={26} /></div>
               </div>
               <div className="card-actions mt-8 items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-xs text-neutral-content/52"><Clock3 size={14} /> Last opened 12 minutes ago</div>
-                <Link href="/boards/current" className="btn btn-primary">Continue board <ArrowRight size={17} /></Link>
+                <div className="flex items-center gap-2 text-xs text-neutral-content/52"><Clock3 size={14} /> {recent ? `Last opened ${formatRelativeTime(recent.lastOpenedAt)}` : "No boards yet"}</div>
+                <Link href={boardHref} className="btn btn-primary">{recent ? "Continue board" : "Create board"} <ArrowRight size={17} /></Link>
               </div>
             </div>
           </article>
@@ -60,15 +83,17 @@ export function HomeDashboard({ user }: { user: AuthenticatedUser }) {
           <article id="weak-spots" className="card card-border bg-base-100">
             <div className="card-body p-6 sm:p-7">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-box bg-warning/12 text-warning"><Target size={20} /></div><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Weak spot</p><h3 className="font-semibold">Factoring structure</h3></div></div>
-                <span className="badge badge-warning badge-soft badge-sm">Medium confidence</span>
+                <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-box bg-warning/12 text-warning"><Target size={20} /></div><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Weak spot</p><h3 className="font-semibold">{insights.weakSpot?.skillName || "Not enough evidence yet"}</h3></div></div>
+                {insights.weakSpot && <span className="badge badge-warning badge-soft badge-sm">{formatConfidence(insights.weakSpot.confidence)} confidence</span>}
               </div>
-              <div className="mt-7 rounded-box bg-base-200 p-5">
-                <div className="flex items-end justify-between gap-3"><div><p className="text-3xl font-semibold tracking-tight">58%</p><p className="mt-1 text-xs text-base-content/48">mastery estimate</p></div><p className="text-right text-xs leading-5 text-base-content/48">3 recent attempts<br />2 similar slips</p></div>
-                <progress className="progress progress-warning mt-4 h-2" value="58" max="100" />
-              </div>
-              <p className="mt-5 text-sm leading-6 text-base-content/58">You recognize the method, but signs and factor pairs are still costing you the next step.</p>
-              <div className="card-actions mt-2 justify-end"><button className="btn btn-ghost btn-sm" type="button">See evidence <ArrowRight size={15} /></button></div>
+              {insights.weakSpot ? <>
+                <div className="mt-7 rounded-box bg-base-200 p-5">
+                  <div className="flex items-end justify-between gap-3"><div><p className="text-3xl font-semibold tracking-tight">{insights.weakSpot.score}%</p><p className="mt-1 text-xs text-base-content/48">mastery estimate</p></div><p className="text-right text-xs leading-5 text-base-content/48">{insights.weakSpot.evidenceCount} evidence points</p></div>
+                  <progress className="progress progress-warning mt-4 h-2" value={insights.weakSpot.score} max="100" />
+                </div>
+                <p className="mt-5 text-sm leading-6 text-base-content/58">This estimate is based on your saved practice evidence, not a permanent label.</p>
+              </> : <p className="mt-7 rounded-box bg-base-200 p-5 text-sm leading-6 text-base-content/58">Complete a few practice attempts and this section will show the first skill worth revisiting.</p>}
+              <div className="card-actions mt-2 justify-end"><Link className="btn btn-ghost btn-sm" href="/weak-spots">{insights.weakSpot ? "See evidence" : "Start diagnostic"} <ArrowRight size={15} /></Link></div>
             </div>
           </article>
         </section>
@@ -78,26 +103,25 @@ export function HomeDashboard({ user }: { user: AuthenticatedUser }) {
             <div className="card-body p-6 sm:p-7">
               <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Study together</p><h3 className="card-title mt-1">Friends</h3></div><Users className="text-base-content/35" size={22} /></div>
               <div className="mt-5 flex items-center">
-                <div className="avatar-group -space-x-3">
-                  {["MK", "JP", "AS"].map((name, index) => <div className="avatar avatar-placeholder" key={name}><div className={`flex size-10 items-center justify-center rounded-full border-2 border-base-100 text-xs font-bold ${index === 0 ? "bg-primary text-primary-content" : index === 1 ? "bg-neutral text-neutral-content" : "bg-warning text-warning-content"}`}>{name}</div></div>)}
-                </div>
-                <div className="ml-4"><p className="text-sm font-semibold">3 people studying now</p><p className="mt-0.5 text-xs text-base-content/48">Calculus, algebra, mechanics</p></div>
+                <div className="flex size-11 items-center justify-center rounded-full bg-base-200 text-sm font-bold">{insights.friendCount}</div>
+                <div className="ml-4"><p className="text-sm font-semibold">{insights.friendCount ? `${insights.friendCount} study ${insights.friendCount === 1 ? "partner" : "partners"}` : "No study partners yet"}</p><p className="mt-0.5 text-xs text-base-content/48">{insights.pendingRequestCount ? `${insights.pendingRequestCount} pending request${insights.pendingRequestCount === 1 ? "" : "s"}` : "Find someone when you are ready to collaborate."}</p></div>
               </div>
-              <div className="mt-6 flex gap-2"><button className="btn btn-sm flex-1" type="button">Find a partner</button><button className="btn btn-ghost btn-sm" type="button">Requests <span className="badge badge-sm">2</span></button></div>
+              <div className="mt-6 flex gap-2"><Link className="btn btn-sm flex-1" href="/friends">Find a partner</Link><Link className="btn btn-ghost btn-sm" href="/friends">Requests <span className="badge badge-sm">{insights.pendingRequestCount}</span></Link></div>
             </div>
           </article>
 
           <article id="recent-boards" className="card card-border bg-base-100">
             <div className="card-body p-0">
-              <div className="flex items-center justify-between px-6 pb-3 pt-6 sm:px-7 sm:pt-7"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Your workspace</p><h3 className="card-title mt-1">Recent boards</h3></div><button className="btn btn-ghost btn-sm" type="button">All boards <ArrowRight size={15} /></button></div>
+              <div className="flex items-center justify-between px-6 pb-3 pt-6 sm:px-7 sm:pt-7"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Your workspace</p><h3 className="card-title mt-1">Recent boards</h3></div><Link className="btn btn-ghost btn-sm" href="/boards">All boards <ArrowRight size={15} /></Link></div>
               <ul className="list px-2 pb-2 sm:px-3 sm:pb-3">
                 {recentBoards.map((board) => (
-                  <li className="list-row items-center rounded-box hover:bg-base-200" key={board.title}>
-                    <div className={`flex size-12 items-center justify-center rounded-box font-serif text-xs font-semibold ${board.tone}`}>{board.mark}</div>
-                    <div className="list-col-grow min-w-0"><Link href="/boards/current" className="truncate text-sm font-semibold hover:underline">{board.title}</Link><p className="mt-1 flex items-center gap-2 text-xs text-base-content/45"><span>{board.subject}</span><span>·</span><span>{board.time}</span></p></div>
+                  <li className="list-row items-center rounded-box hover:bg-base-200" key={board.boardId}>
+                    <div className="flex size-12 items-center justify-center rounded-box bg-primary/10 font-serif text-xs font-semibold text-primary">{board.title.slice(0, 2).toUpperCase()}</div>
+                    <div className="list-col-grow min-w-0"><Link href={`/boards/${encodeURIComponent(board.boardId)}`} className="truncate text-sm font-semibold hover:underline">{board.title}</Link><p className="mt-1 flex items-center gap-2 text-xs text-base-content/45"><span>{board.subject || "Mathematics"}</span><span>·</span><span>{formatRelativeTime(board.lastOpenedAt)}</span></p></div>
                     <button type="button" className="btn btn-ghost btn-circle btn-sm" aria-label={`More options for ${board.title}`}><MoreHorizontal size={17} /></button>
                   </li>
                 ))}
+                {!recentBoards.length && <li className="px-5 py-8 text-center text-sm text-base-content/50">Your boards will appear here after you create one.</li>}
               </ul>
             </div>
           </article>
@@ -114,5 +138,26 @@ export function HomeDashboard({ user }: { user: AuthenticatedUser }) {
 
 export default async function HomePage() {
   const user = await requireCurrentUser("/home");
-  return <HomeDashboard user={user} />;
+  const [recentBoards, insights, profile] = await Promise.all([
+    listUserBoards(user.userId, 5),
+    getHomeInsights(user),
+    getUserProfile(user),
+  ]);
+  return <HomeDashboard user={{ ...user, displayName: profile.displayName, fullName: profile.displayName }} recentBoards={recentBoards} insights={insights} isPreview={false} />;
+}
+
+function formatRelativeTime(value: number) {
+  const minutes = Math.max(0, Math.round((Date.now() - value) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function formatConfidence(value: number) {
+  if (value >= 75) return "High";
+  if (value >= 45) return "Medium";
+  return "Low";
 }

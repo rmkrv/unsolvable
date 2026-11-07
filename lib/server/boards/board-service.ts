@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { PostgresBoardRepository } from "./postgres-board-repository";
 import { applyBoardCommands, type BoardActor, type BoardCommand } from "@/lib/domain/board/commands";
 import type { BoardDocument } from "@/lib/domain/board/model";
+import { createEmptyBoardDocument } from "@/lib/domain/board/model";
 
 let repository: BoardRepository | null = null;
 
@@ -19,8 +20,29 @@ export function readTutorBoard(userId: string, boardId?: string, includeSnapshot
   return getBoardRepository().readForUser(userId, boardId, includeSnapshot);
 }
 
+export function listUserBoards(userId: string, limit = 12) {
+  return getBoardRepository().listForUser(userId, limit);
+}
+
+export function markBoardOpened(userId: string, boardId: string) {
+  return getBoardRepository().markOpened(userId, boardId);
+}
+
 export function saveTutorBoard(input: SaveBoardInput) {
   return getBoardRepository().saveForUser(input);
+}
+
+export async function createTutorBoard(userId: string, title = "Untitled board") {
+  const boardId = crypto.randomUUID();
+  const document = createEmptyBoardDocument(boardId);
+  const result = await saveTutorBoard({
+    userId,
+    boardId,
+    stateJson: JSON.stringify(document),
+    snapshotDataUrl: null,
+    title,
+  });
+  return { boardId, title, ...result };
 }
 
 export function markMcpConnected(userId: string, boardId?: string) {

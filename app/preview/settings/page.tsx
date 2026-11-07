@@ -18,7 +18,7 @@ export default function SettingsDesignPreviewPage() {
           <h2 className="mt-2 font-serif text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Account settings</h2>
           <p className="mt-3 max-w-2xl text-base leading-7 text-base-content/58">Manage how you appear, how you sign in, and what happens to your data.</p>
         </div>
-        <SettingsPreview name={user.fullName} email={user.email} />
+        <SettingsPreview name={user.fullName} email={user.email} isPreview />
       </div>
     </AppShell>
   );

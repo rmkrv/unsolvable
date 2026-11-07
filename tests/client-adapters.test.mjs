@@ -28,8 +28,8 @@ test("HTTP board gateway owns board route serialization", async () => {
   };
   const gateway = createHttpBoardGateway(fetcher);
 
-  assert.deepEqual(await gateway.read(9), { board: null, actions: [] });
-  assert.equal(requests[0].input, "/api/board?after=9");
+  assert.deepEqual(await gateway.read("board-1", 9), { board: null, actions: [] });
+  assert.equal(requests[0].input, "/api/board?boardId=board-1&after=9");
 
   const document = {
     boardId: "board-1",

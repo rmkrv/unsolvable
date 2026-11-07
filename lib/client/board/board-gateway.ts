@@ -13,7 +13,7 @@ export type SharedBoardResponse = {
 };
 
 export interface BoardGateway {
-  read(after: number): Promise<SharedBoardResponse>;
+  read(boardId: string, after: number): Promise<SharedBoardResponse>;
   save(document: BoardDocument, snapshotDataUrl?: string, expectedVersion?: number): Promise<{ eventVersion: number; updatedAt: number }>;
 }
 
@@ -25,8 +25,9 @@ async function jsonOrError<T>(response: Response, fallback: string): Promise<T> 
 
 export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGateway {
   return {
-    async read(after) {
-      const response = await fetcher(`/api/board?after=${after}`, { cache: "no-store" });
+    async read(boardId, after) {
+      const params = new URLSearchParams({ boardId, after: String(after) });
+      const response = await fetcher(`/api/board?${params}`, { cache: "no-store" });
       return jsonOrError<SharedBoardResponse>(response, "Shared board unavailable");
     },
     async save(document, snapshotDataUrl, expectedVersion) {

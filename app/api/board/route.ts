@@ -14,10 +14,13 @@ function authError(error: unknown) {
 export async function GET(request: Request) {
   try {
     const userId = await requireRequestUserId();
-    const board = await readTutorBoard(userId, undefined, false);
+    const url = new URL(request.url);
+    const boardId = url.searchParams.get("boardId")?.trim();
+    if (!boardId) return NextResponse.json({ error: "A board ID is required." }, { status: 400 });
+    const board = await readTutorBoard(userId, boardId.slice(0, 120), false);
     if (!board) return NextResponse.json({ board: null, actions: [] });
 
-    const after = Number(new URL(request.url).searchParams.get("after") || 0);
+    const after = Number(url.searchParams.get("after") || 0);
     const actions = await readTutorActions(userId, board.boardId, Number.isFinite(after) ? after : 0);
     return NextResponse.json({
       board: {
@@ -58,6 +61,7 @@ export async function PUT(request: Request) {
       boardId: body.boardId.slice(0, 120),
       stateJson: JSON.stringify(body.state),
       snapshotDataUrl,
+      title: typeof body.title === "string" ? body.title.slice(0, 120) : undefined,
       expectedVersion,
     });
     return NextResponse.json({ ok: true, ...result });

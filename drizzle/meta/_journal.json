@@ -8,6 +8,13 @@
       "when": 1794002860122,
       "tag": "0000_mute_random",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794089873810,
+      "tag": "0001_loose_mauler",
+      "breakpoints": true
     }
   ]
 }

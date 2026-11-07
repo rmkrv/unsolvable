@@ -24,6 +24,7 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
       boardId,
       stateJson: JSON.stringify({ boardId, pages: [] }),
       snapshotDataUrl: null,
+      title: "Integration board",
     });
     assert.equal(first.eventVersion, 1);
 
@@ -43,6 +44,12 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
 
     const withSnapshot = await repository.readForUser(authSubject, boardId, true);
     assert.equal(withSnapshot?.snapshotDataUrl, "data:image/png;base64,AA==");
+
+    assert.equal(await repository.markOpened(authSubject, boardId), true);
+    const recent = await repository.listForUser(authSubject, 5);
+    assert.equal(recent.length, 1);
+    assert.equal(recent[0].title, "Integration board");
+    assert.equal(recent[0].boardId, boardId);
 
     const third = await repository.updateForUser({
       userId: authSubject,
@@ -71,6 +78,7 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
     assert.deepEqual(await repository.readTutorActions(authSubject, boardId, actionId), []);
 
     assert.equal(await repository.readForUser(otherSubject), null);
+    assert.equal(await repository.markOpened(otherSubject, boardId), false);
     assert.equal(await repository.enqueueTutorAction(otherSubject, boardId, { type: "say" }), null);
   } finally {
     await db.delete(schema.appUsers).where(eq(schema.appUsers.authSubject, authSubject));

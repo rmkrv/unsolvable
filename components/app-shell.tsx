@@ -20,9 +20,9 @@ export type AppSection = "home" | "practice" | "weak-spots" | "friends" | "board
 const navigation = [
   { id: "home" as const, label: "Home", href: "/home", icon: Home },
   { id: "practice" as const, label: "Practice", href: "/boards/current", icon: BookOpen },
-  { id: "weak-spots" as const, label: "Weak spots", href: "/home#weak-spots", icon: Target },
-  { id: "friends" as const, label: "Friends", href: "/home#friends", icon: Users },
-  { id: "boards" as const, label: "Boards", href: "/home#recent-boards", icon: LayoutGrid },
+  { id: "weak-spots" as const, label: "Weak spots", href: "/weak-spots", icon: Target },
+  { id: "friends" as const, label: "Friends", href: "/friends", icon: Users },
+  { id: "boards" as const, label: "Boards", href: "/boards", icon: LayoutGrid },
 ];
 
 function initials(user: AuthenticatedUser) {

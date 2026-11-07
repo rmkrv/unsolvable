@@ -117,6 +117,7 @@ export function AuthForm({
       <button type="submit" disabled={pending}>
         {pending ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
       </button>
+      {!isSignUp && !oauthVisit && <Link href={`/auth/forgot-password?email=${encodeURIComponent("")}`}>Forgot your password?</Link>}
       {!oauthVisit && <Link href={`${alternatePath}?redirectTo=${encodeURIComponent(destination)}`}>{alternateLabel}</Link>}
     </form>
   );

@@ -34,6 +34,17 @@ export type BoardDocument = {
   request?: { message: string; trigger: string; at: number } | null;
 };
 
+export function createEmptyBoardDocument(boardId: string): BoardDocument {
+  return {
+    boardId,
+    pages: [{ id: "page-1", name: "Page 1", strokes: [] }],
+    activePageId: "page-1",
+    viewport: { x: 86, y: 70, zoom: 1 },
+    hintLevel: 2,
+    request: null,
+  };
+}
+
 export function makeId(prefix = "stroke") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }

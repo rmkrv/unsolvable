@@ -34,6 +34,7 @@ Runtime providers stay behind replaceable boundaries:
 | --- | --- | --- | --- |
 | Board model | `lib/domain/board/model.ts` | Provider-independent | Same package |
 | Board persistence | `lib/server/boards/board-repository.ts` | Neon PostgreSQL | Same contract, optional extracted API |
+| Product profile and Home insights | `lib/server/users/user-repository.ts` | Neon PostgreSQL | Same contract |
 | Browser board sync | `lib/client/board/board-gateway.ts` | Versioned `/api/board` polling | HTTP bootstrap + Durable Object WebSocket |
 | Browser recovery | `lib/client/board/local-board-store.ts` | `localStorage` | Keep as offline recovery |
 | AI tool transport | `app/mcp/route.ts` | Provider-neutral Streamable HTTP MCP | Same protocol across compatible clients |
@@ -55,6 +56,14 @@ TutorBoard
 ```
 
 The repository maps the Neon Auth subject to an internal application user. Personal workspaces are provisioned idempotently on first save. Workspace and board memberships provide authorization independently from authentication.
+
+Canonical board pages use `/boards/[boardId]`. Browser reads include that explicit board ID, and successful opens upsert `user_board_activity`, so Home recents are per-user rather than reordered by a collaborator's edit. `/boards/current` is only a convenience redirect to the most recently opened authorized board, creating one when the workspace is empty.
+
+## Account and learning data
+
+Neon Auth owns credentials, sessions, primary email, password changes, and reset tokens. The application database owns `user_profiles`, normalized `billing_accounts`, collaboration records, practice evidence, and derived skill mastery. Profile and Home reads go through `lib/server/users`; React pages never query PostgreSQL directly.
+
+Provider-dependent operations remain explicit boundaries: avatar bytes need object storage, billing management needs a selected payment provider, recovery email needs a verified auth factor, and account deletion needs a retention/cancellation policy. The UI does not simulate these operations while those decisions are open.
 
 ## Tutor flow
 
