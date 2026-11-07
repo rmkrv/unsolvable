@@ -36,6 +36,10 @@ test("PostgreSQL user repository provisions and persists product-owned account d
 
     const home = await repository.getHomeInsights(identity);
     assert.deepEqual(home, { friendCount: 0, pendingRequestCount: 0, weakSpot: null });
+
+    const overview = await repository.getHomeOverview(identity);
+    assert.equal(overview.profile.displayName, "Ada Learner");
+    assert.deepEqual(overview.insights, home);
   } finally {
     await db.delete(schema.appUsers).where(eq(schema.appUsers.authSubject, identity.authSubject));
   }

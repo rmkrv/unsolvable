@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { HomeDashboard } from "@/app/home/page";
+import { HomeDashboard } from "@/components/home-dashboard";
 
 export default function HomeDesignPreviewPage() {
   if (process.env.NODE_ENV === "production") notFound();

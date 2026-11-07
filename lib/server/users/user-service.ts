@@ -39,3 +39,7 @@ export function getUserBilling(user: AuthenticatedUser) {
 export function getHomeInsights(user: AuthenticatedUser) {
   return getUserRepository().getHomeInsights(identity(user));
 }
+
+export function getHomeOverviewForIdentity(authSubject: string, suggestedDisplayName: string) {
+  return getUserRepository().getHomeOverview({ authSubject, suggestedDisplayName });
+}

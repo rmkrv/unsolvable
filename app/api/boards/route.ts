@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
+import { HOME_CACHE_TAG } from "@/lib/server/home/dashboard-data";
 import { isSameOrigin, requireRequestUserId } from "@/lib/server/auth/request-identity";
 import { createTutorBoard, listUserBoards } from "@/lib/server/boards/board-service";
 
@@ -34,6 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid board details." }, { status: 400 });
     }
     const board = await createTutorBoard(userId, parsed.data.title);
+    revalidateTag(HOME_CACHE_TAG, "max");
     return NextResponse.json({ board }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === "AUTH_REQUIRED") {

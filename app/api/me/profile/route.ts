@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { z } from "zod";
+import { HOME_CACHE_TAG } from "@/lib/server/home/dashboard-data";
 import { getCurrentUser } from "@/lib/server/auth/current-user";
 import { isSameOrigin } from "@/lib/server/auth/request-identity";
 import { getUserBilling, getUserProfile, updateUserProfile } from "@/lib/server/users/user-service";
@@ -34,6 +36,7 @@ export async function PATCH(request: Request) {
   }
   try {
     const profile = await updateUserProfile(user, parsed.data);
+    revalidateTag(HOME_CACHE_TAG, "max");
     return NextResponse.json({ profile });
   } catch {
     return NextResponse.json({ error: "Could not save your profile." }, { status: 500 });

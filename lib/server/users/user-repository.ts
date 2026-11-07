@@ -34,9 +34,15 @@ export type HomeInsights = {
   weakSpot: WeakSpotSummary | null;
 };
 
+export type HomeOverview = {
+  profile: UserProfile;
+  insights: HomeInsights;
+};
+
 export interface UserRepository {
   getProfile(identity: UserIdentityInput): Promise<UserProfile>;
   updateProfile(identity: UserIdentityInput, input: Pick<UserProfile, "displayName" | "isDiscoverable">): Promise<UserProfile>;
   getBilling(identity: UserIdentityInput): Promise<BillingSummary>;
   getHomeInsights(identity: UserIdentityInput): Promise<HomeInsights>;
+  getHomeOverview(identity: UserIdentityInput): Promise<HomeOverview>;
 }
