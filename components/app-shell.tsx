@@ -68,7 +68,7 @@ export function AppShell({
           </div>
 
           <div className="navbar-end gap-2">
-            <button type="button" className="btn btn-ghost btn-circle" aria-label="Notifications">
+            <button type="button" className="btn btn-ghost btn-circle" aria-label="Notifications are not available yet" title="Notifications are not available yet" disabled>
               <Bell size={18} />
             </button>
             <details className="dropdown dropdown-end">

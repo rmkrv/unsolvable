@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
-export function NewBoardButton({ className = "btn" }: { className?: string }) {
+export function NewBoardButton({ className = "btn", href }: { className?: string; href?: string }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -26,6 +27,10 @@ export function NewBoardButton({ className = "btn" }: { className?: string }) {
     } finally {
       setCreating(false);
     }
+  }
+
+  if (href) {
+    return <Link className={className} href={href}><Plus size={17} />New board</Link>;
   }
 
   return (

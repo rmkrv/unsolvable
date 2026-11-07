@@ -4,7 +4,6 @@ import {
   BookOpen,
   Calculator,
   Clock3,
-  MoreHorizontal,
   Sparkles,
   Target,
   Users,
@@ -59,7 +58,10 @@ export function HomeDashboard({
             <h2 className="mt-2 font-serif text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Good to see you, {firstName}.</h2>
             <p className="mt-3 text-base text-base-content/58">Pick up the thread, or start with the idea that needs attention.</p>
           </div>
-          <NewBoardButton className="btn hidden sm:inline-flex" />
+          <NewBoardButton
+            className="btn hidden sm:inline-flex"
+            href={isPreview ? "/auth/sign-up?redirectTo=/boards/current" : undefined}
+          />
         </div>
 
         <section className="mt-9 grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
@@ -118,7 +120,7 @@ export function HomeDashboard({
                   <li className="list-row items-center rounded-box hover:bg-base-200" key={board.boardId}>
                     <div className="flex size-12 items-center justify-center rounded-box bg-primary/10 font-serif text-xs font-semibold text-primary">{board.title.slice(0, 2).toUpperCase()}</div>
                     <div className="list-col-grow min-w-0"><Link href={`/boards/${encodeURIComponent(board.boardId)}`} className="truncate text-sm font-semibold hover:underline">{board.title}</Link><p className="mt-1 flex items-center gap-2 text-xs text-base-content/45"><span>{board.subject || "Mathematics"}</span><span>·</span><span>{formatRelativeTime(board.lastOpenedAt)}</span></p></div>
-                    <button type="button" className="btn btn-ghost btn-circle btn-sm" aria-label={`More options for ${board.title}`}><MoreHorizontal size={17} /></button>
+                    <Link href={`/boards/${encodeURIComponent(board.boardId)}`} className="btn btn-ghost btn-circle btn-sm" aria-label={`Open ${board.title}`}><ArrowRight size={17} /></Link>
                   </li>
                 ))}
                 {!recentBoards.length && <li className="px-5 py-8 text-center text-sm text-base-content/50">Your boards will appear here after you create one.</li>}
@@ -128,8 +130,8 @@ export function HomeDashboard({
         </section>
 
         <section className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-          <article className="card card-border bg-base-200/70"><div className="card-body"><BookOpen size={19} className="text-primary" /><h3 className="card-title mt-2 text-base">Start from a topic</h3><p className="text-sm leading-6 text-base-content/55">Choose a skill, difficulty, and how much help you want.</p><div className="card-actions mt-2"><button type="button" className="btn btn-ghost btn-sm px-0">Browse practice <ArrowRight size={15} /></button></div></div></article>
-          <article className="card card-border bg-base-200/70"><div className="card-body"><Calculator size={19} className="text-success" /><h3 className="card-title mt-2 text-base">Take a short diagnostic</h3><p className="text-sm leading-6 text-base-content/55">Five purposeful problems to find the next useful focus.</p><div className="card-actions mt-2"><button type="button" className="btn btn-ghost btn-sm px-0">Start diagnostic <ArrowRight size={15} /></button></div></div></article>
+          <article className="card card-border bg-base-200/70"><div className="card-body"><BookOpen size={19} className="text-primary" /><h3 className="card-title mt-2 text-base">Start from a topic</h3><p className="text-sm leading-6 text-base-content/55">Choose a skill, difficulty, and how much help you want.</p><div className="card-actions mt-2"><Link href="/boards/current" className="btn btn-ghost btn-sm px-0">Browse practice <ArrowRight size={15} /></Link></div></div></article>
+          <article className="card card-border bg-base-200/70"><div className="card-body"><Calculator size={19} className="text-success" /><h3 className="card-title mt-2 text-base">Take a short diagnostic</h3><p className="text-sm leading-6 text-base-content/55">Five purposeful problems to find the next useful focus.</p><div className="card-actions mt-2"><Link href="/weak-spots" className="btn btn-ghost btn-sm px-0">Start diagnostic <ArrowRight size={15} /></Link></div></div></article>
         </section>
       </div>
     </AppShell>
