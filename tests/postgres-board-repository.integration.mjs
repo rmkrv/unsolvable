@@ -38,9 +38,29 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
     const stored = await repository.readForUser(authSubject);
     assert.equal(stored?.boardId, boardId);
     assert.equal(stored?.eventVersion, 2);
+    assert.equal(stored?.snapshotDataUrl, null, "ordinary reads should not transfer the PNG snapshot");
     assert.deepEqual(JSON.parse(stored?.stateJson ?? "{}").pages, [{ id: "page-1" }]);
 
-    const connectedAt = await repository.markTutorConnected(authSubject);
+    const withSnapshot = await repository.readForUser(authSubject, boardId, true);
+    assert.equal(withSnapshot?.snapshotDataUrl, "data:image/png;base64,AA==");
+
+    const third = await repository.updateForUser({
+      userId: authSubject,
+      boardId,
+      expectedVersion: 2,
+      stateJson: JSON.stringify({ boardId, pages: [{ id: "page-2" }] }),
+      snapshotDataUrl: null,
+    });
+    assert.equal(third?.eventVersion, 3);
+    assert.equal(await repository.updateForUser({
+      userId: authSubject,
+      boardId,
+      expectedVersion: 2,
+      stateJson: JSON.stringify({ boardId, pages: [] }),
+      snapshotDataUrl: null,
+    }), null, "stale writers must not overwrite a newer board version");
+
+    const connectedAt = await repository.markTutorConnected(authSubject, boardId);
     assert.ok(connectedAt > 0);
 
     const actionId = await repository.enqueueTutorAction(authSubject, boardId, { type: "say", text: "Checked." });

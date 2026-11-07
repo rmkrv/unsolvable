@@ -56,7 +56,6 @@ import {
   writeBoardColor,
   writeLocalBoard,
 } from "@/lib/client/board/local-board-store";
-import { createTutorTransport } from "@/lib/client/tutor/tutor-transport";
 import { generateArrow, generateFeedbackStroke, generateHandwriting, generatePlainText, generateTemplate, measureHandwriting } from "@/lib/trajectory-generator";
 import { findFreeHandwritingAnchor } from "@/lib/handwriting-placement.mjs";
 import { createEnglishSpeechController } from "@/lib/english-speech.mjs";
@@ -64,7 +63,8 @@ import { boundsIntersect, buildShapePaths, isEditableTarget, selectionBounds, ty
 
 type Tool = "select" | "pen" | "highlighter" | "eraser" | "hand" | ShapeTool;
 type DrawingTool = "pen" | "highlighter" | ShapeTool;
-type BridgeState = "connecting" | "ready" | "offline" | "thinking" | "drawing";
+type BridgeState = "connecting" | "authorized" | "offline" | "thinking" | "drawing";
+type ConnectionTarget = "codex" | "claude" | "other";
 type DrawingGesture = {
   tool: DrawingTool;
   color: string;
@@ -99,8 +99,10 @@ type SpeechRecognitionWindow = Window & {
 const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
 const boardGateway = createHttpBoardGateway();
-const tutorTransport = createTutorTransport(import.meta.env.VITE_TUTOR_BRIDGE_URL as string | undefined);
-const localTutor = tutorTransport.mode === "local";
+
+function agentAvailable(state: BridgeState) {
+  return state === "authorized";
+}
 
 const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut?: string; ariaShortcut?: string }[] = [
   { id: "select", label: "Select", icon: MousePointer2, shortcut: "Ctrl/⌘ V", ariaShortcut: "Control+V Meta+V" },
@@ -163,8 +165,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bridgeState, setBridgeState] = useState<BridgeState>("connecting");
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [model, setModel] = useState<string | null>(null);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget>("codex");
   const [hintLevel, setHintLevel] = useState(2);
   const [autoObserve, setAutoObserve] = useState(true);
   const [prompt, setPrompt] = useState("");
@@ -186,13 +188,14 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const gestureSnapshotRef = useRef<Page[] | null>(null);
   const renderFrameRef = useRef<number | null>(null);
   const animationRef = useRef<AbortController | null>(null);
-  const turnRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechRef = useRef<ReturnType<typeof createEnglishSpeechController> | null>(null);
   const observationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionCountRef = useRef(0);
   const lastActionIdRef = useRef(0);
   const hasActionCursorRef = useRef(false);
+  const serverVersionRef = useRef(0);
+  const applyingRemoteStateRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
   const previousToolRef = useRef<Tool | null>(null);
   const temporaryShapeToolRef = useRef<{ key: string; tool: ShapeTool; previousTool: Tool } | null>(null);
@@ -676,7 +679,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           ),
         );
       }
-      if (!controller.signal.aborted) setBridgeState("ready");
+      if (!controller.signal.aborted) setBridgeState("authorized");
     },
     [speak],
   );
@@ -770,15 +773,28 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   const syncBoard = useCallback(
     async (captureSnapshot = false) => {
       if (!sessionId) return null;
-      const snapshotDataUrl = captureSnapshot ? canvasRef.current?.toDataURL("image/png") : undefined;
-      return boardGateway.save({
+      const canvas = canvasRef.current;
+      const rect = canvas?.getBoundingClientRect();
+      const snapshotDataUrl = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
+      const result = await boardGateway.save({
         boardId: sessionId,
         pages: pagesRef.current,
         activePageId: activePageIdRef.current,
         viewport: viewRef.current,
+        snapshot: canvas && rect
+          ? {
+              width: canvas.width,
+              height: canvas.height,
+              cssWidth: rect.width,
+              cssHeight: rect.height,
+              pixelRatio: rect.width > 0 ? canvas.width / rect.width : 1,
+            }
+          : undefined,
         hintLevel,
         request: requestRef.current,
-      }, snapshotDataUrl);
+      }, snapshotDataUrl, serverVersionRef.current || undefined);
+      serverVersionRef.current = result.eventVersion;
+      return result;
     },
     [hintLevel, sessionId],
   );
@@ -794,11 +810,15 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       try {
         const payload = await boardGateway.read(lastActionIdRef.current);
         if (disposed) return;
-        if (restore && payload.board?.state?.pages?.length) {
+        const remoteVersion = payload.board?.eventVersion ?? 0;
+        const remoteChanged = remoteVersion > serverVersionRef.current;
+        if ((restore || remoteChanged) && payload.board?.state?.pages?.length) {
+          applyingRemoteStateRef.current = true;
           setPages(payload.board.state.pages);
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
         }
+        serverVersionRef.current = Math.max(serverVersionRef.current, remoteVersion);
         if (restore && !hasActionCursorRef.current && payload.board) {
           // Existing boards predate the stored cursor. Treat their queued actions
           // as historical so a refresh cannot replay old drawing or speech.
@@ -806,10 +826,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           writeActionCursor(localStorage, boardId, lastActionIdRef.current);
           hasActionCursorRef.current = true;
         }
-        if (!localTutor) {
-          const recentlyUsed = Date.now() - Number(payload.board?.lastMcpAt || 0) < 120_000;
-          setBridgeState((current) => current === "drawing" ? current : recentlyUsed ? "ready" : "offline");
-        }
+        const recentlyUsed = Date.now() - Number(payload.board?.lastMcpAt || 0) < 120_000;
+        setBridgeState((current) => current === "drawing" ? current : recentlyUsed ? "authorized" : "offline");
         const processActions = async () => {
           const sharedCursor = readActionCursor(localStorage, boardId);
           if (sharedCursor !== null) {
@@ -839,15 +857,10 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       const storedCursor = readActionCursor(localStorage, boardId);
       hasActionCursorRef.current = storedCursor !== null;
       lastActionIdRef.current = storedCursor ?? 0;
-      setModel(tutorTransport.label);
       try {
         await readSharedBoard(boardId, true);
         if (!disposed) {
-          if (localTutor) {
-            const status = await tutorTransport.status();
-            setBridgeState(status.ready ? "ready" : "offline");
-            if (!status.ready && status.error) setToast(status.error);
-          } else setBridgeState((current) => (current === "ready" ? current : "offline"));
+          setBridgeState((current) => (current === "authorized" ? current : "offline"));
           timer = setInterval(() => {
             readSharedBoard(boardId!, false).catch(() => undefined);
           }, 1_200);
@@ -868,6 +881,15 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
   useEffect(() => {
     if (!sessionId) return;
+    if (applyingRemoteStateRef.current) {
+      applyingRemoteStateRef.current = false;
+      const timer = setTimeout(() => {
+        syncBoard(true).catch((error) => {
+          setToast(error instanceof Error ? error.message : "Could not refresh the shared board snapshot.");
+        });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
     const timer = setTimeout(() => {
       syncBoard(true).catch((error) => {
         setToast(error instanceof Error ? error.message : "Could not sync the shared board.");
@@ -878,12 +900,8 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
   const interrupt = useCallback(async () => {
     animationRef.current?.abort();
-    turnRef.current?.abort();
     speechRef.current?.stop();
-    if (localTutor && sessionId) {
-      await tutorTransport.interrupt(sessionId).catch(() => undefined);
-    }
-    setBridgeState((current) => (current === "offline" ? "offline" : sessionId ? "ready" : "offline"));
+    setBridgeState((current) => current === "offline" ? "offline" : sessionId ? "authorized" : "offline");
     setToast("Stopped. Your current board work is preserved.");
   }, [sessionId]);
 
@@ -895,22 +913,13 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
       }
       if (bridgeState === "thinking" || bridgeState === "drawing") await interrupt();
       requestRef.current = { message: message.slice(0, 800), trigger, at: Date.now() };
-      setToast(localTutor ? "Codex is checking your board…" : "Request shared. Continue in your Codex tutor chat to let Unsolvable respond.");
+      setToast("Request shared. Continue in your connected AI chat to let Unsolvable respond.");
       try {
         await syncBoard(true);
-        if (localTutor) {
-          setBridgeState("thinking");
-          const controller = new AbortController();
-          turnRef.current = controller;
-          const result = await tutorTransport.sendTurn({ boardId: sessionId, message, trigger }, controller.signal);
-          if (turnRef.current === controller) turnRef.current = null;
-          setBridgeState("ready");
-          if (result.reply) setToast(result.reply.slice(0, 280));
-        } else if (bridgeState === "offline") setConnectionOpen(true);
+        if (bridgeState === "offline") setConnectionOpen(true);
       } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") return;
         setBridgeState("offline");
-        setToast(error instanceof Error ? error.message : "Could not share the request with Codex.");
+        setToast(error instanceof Error ? error.message : "Could not share the request with the AI assistant.");
       }
     },
     [bridgeState, interrupt, sessionId, syncBoard],
@@ -922,7 +931,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     if (observationTimerRef.current) clearTimeout(observationTimerRef.current);
     observationTimerRef.current = setTimeout(() => {
       interactionCountRef.current = 0;
-      if (bridgeState === "ready") {
+      if (agentAvailable(bridgeState)) {
         sendTurn(
           "Observe silently unless there is a high-confidence issue in the newest completed reasoning step. Do not explain more than the selected hint level.",
           "pause_after_strokes",
@@ -1162,7 +1171,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
     setSelectedIds([]);
     setView({ x: 86, y: 70, zoom: 1 });
     setPagesOpen(false);
-    if (autoObserve && bridgeState === "ready") {
+    if (autoObserve && agentAvailable(bridgeState)) {
       sendTurn("I moved to a new page. Preserve the reasoning context from earlier pages and observe silently.", "page_changed");
     }
   };
@@ -1207,11 +1216,17 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
 
   const statusLabel = {
     connecting: "Preparing board",
-    ready: "Codex connected",
-    offline: "Connect Codex",
-    thinking: "Codex active",
-    drawing: "Drawing",
+    authorized: "AI recently active",
+    offline: "Connect AI",
+    thinking: "AI active",
+    drawing: "AI drawing",
   }[bridgeState];
+
+  const connectionInstructions = connectionTarget === "codex"
+    ? <>Run <code>codex mcp add unsolvable --url &lt;this-site&gt;/mcp</code>, or add the same URL in Codex MCP settings.</>
+    : connectionTarget === "claude"
+      ? <>In Claude or Claude Desktop, open Settings → Connectors → Add custom connector, then paste this site&apos;s <code>/mcp</code> URL.</>
+      : <>Add this site&apos;s <code>/mcp</code> URL as a remote Streamable HTTP server in any OAuth-capable MCP client.</>;
 
   return (
     <main className="tutor-shell">
@@ -1232,7 +1247,7 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
             <input type="checkbox" checked={autoObserve} onChange={(event) => setAutoObserve(event.target.checked)} />
             <span /> Auto-observe
           </label>
-          <button className={`agent-status status-${bridgeState}`} title={model || "Codex MCP plugin"} type="button" onClick={() => setConnectionOpen(true)}>
+          <button className={`agent-status status-${bridgeState}`} title="Remote MCP assistant" type="button" onClick={() => setConnectionOpen(true)}>
             {bridgeState === "offline" ? <WifiOff size={14} /> : <Wifi size={14} />}
             <span>{statusLabel}</span><i />
           </button>
@@ -1312,22 +1327,26 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
           <section className="connection-dialog" role="dialog" aria-modal="true" aria-labelledby="connect-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="connection-close" type="button" aria-label="Close" onClick={() => setConnectionOpen(false)}><X size={18} /></button>
             <div className="connection-icon"><Cable size={22} /></div>
-            <p>{localTutor ? "Local connection" : "One-time setup"}</p>
-            <h2 id="connect-title">{localTutor ? "Codex on this computer" : "Open Unsolvable in Codex"}</h2>
-            <div className="connection-copy">
-              {localTutor
-                ? "Unsolvable uses the Codex installation and ChatGPT sign-in already on this computer. Close this window and press Check work to start a turn."
-                : <>Open Codex Settings → MCP servers → Add server. Choose Streamable HTTP and enter <code>http://127.0.0.1:5173/mcp</code>.</>}
+            <p>Remote MCP connection</p>
+            <h2 id="connect-title">Connect an AI assistant</h2>
+            <div className="connection-copy">{connectionInstructions}</div>
+            <div className="connection-targets" aria-label="AI client">
+              {(["codex", "claude", "other"] as const).map((target) => (
+                <button
+                  type="button"
+                  key={target}
+                  className={connectionTarget === target ? "is-active" : ""}
+                  onClick={() => setConnectionTarget(target)}
+                >
+                  {target === "other" ? "Other MCP" : target[0].toUpperCase() + target.slice(1)}
+                </button>
+              ))}
             </div>
             <div className="connection-note">
-              <strong>{bridgeState === "ready" ? "Connection detected" : "Codex is not ready"}</strong>
-              <span>Signed in as {displayName}. No API key is needed.</span>
+              <strong>{bridgeState === "authorized" ? "An AI assistant accessed this board recently" : "No recent remote AI activity"}</strong>
+              <span>The MCP client opens Unsolvable sign-in and consent for {displayName}; no model-provider key is stored here.</span>
             </div>
-            {localTutor ? (
-              <button className="connection-done" type="button" onClick={() => setConnectionOpen(false)}>Start using Unsolvable</button>
-            ) : (
-              <button className="connection-done" type="button" onClick={() => { navigator.clipboard.writeText("http://127.0.0.1:5173/mcp").then(() => setToast("Local MCP address copied.")).catch(() => undefined); }}>Copy MCP address</button>
-            )}
+            <button className="connection-done" type="button" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/mcp`).then(() => setToast("MCP server address copied.")).catch(() => undefined); }}>Copy MCP server address</button>
             <button className="connection-secondary" type="button" onClick={() => setConnectionOpen(false)}>Close</button>
           </section>
         </div>

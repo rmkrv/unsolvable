@@ -71,6 +71,7 @@ button { color: inherit; }
 .agent-status:hover { border-color: #bbc4ec; background: white; }
 .agent-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 3px rgba(21,128,61,.10); }
 .agent-status.status-offline i { background: #a5a6a7; box-shadow: none; }
+.agent-status.status-authorized i { background: var(--blue); box-shadow: 0 0 0 3px rgba(53,88,212,.10); }
 .agent-status.status-thinking i, .agent-status.status-drawing i { background: #d98a2b; animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { opacity: .35; transform: scale(.75); } }
 
@@ -143,6 +144,10 @@ button { color: inherit; }
 .connection-dialog > p { margin: 18px 0 5px; color: var(--blue); font-size: 10px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
 .connection-dialog h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 28px; letter-spacing: -.025em; }
 .connection-copy { margin: 18px 0 20px; color: #555d6b; font-size: 13px; line-height: 1.55; }
+.connection-targets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: -7px 0 16px; }
+.connection-targets button { height: 34px; border: 1px solid #dedfe6; border-radius: 9px; background: white; color: #666d7c; font-size: 10px; font-weight: 700; cursor: pointer; }
+.connection-targets button:hover { border-color: #aeb8e4; color: var(--ink); }
+.connection-targets button.is-active { border-color: #8fa0e8; background: var(--blue-soft); color: var(--blue); }
 .connection-dialog ol { margin: 22px 0; padding-left: 22px; color: #4f5665; font-size: 13px; line-height: 1.55; }
 .connection-dialog li + li { margin-top: 10px; }
 .connection-dialog code { padding: 2px 5px; border-radius: 5px; background: #f0f1f5; color: #303a59; font-size: 11px; }

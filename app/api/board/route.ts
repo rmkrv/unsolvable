@@ -14,7 +14,7 @@ function authError(error: unknown) {
 export async function GET(request: Request) {
   try {
     const userId = await requireRequestUserId();
-    const board = await readTutorBoard(userId);
+    const board = await readTutorBoard(userId, undefined, false);
     if (!board) return NextResponse.json({ board: null, actions: [] });
 
     const after = Number(new URL(request.url).searchParams.get("after") || 0);
@@ -50,14 +50,24 @@ export async function PUT(request: Request) {
       body.snapshotDataUrl.length <= 750_000
         ? body.snapshotDataUrl
         : null;
+    const expectedVersion = Number.isInteger(body.expectedVersion) && body.expectedVersion >= 0
+      ? body.expectedVersion
+      : undefined;
     const result = await saveTutorBoard({
       userId,
       boardId: body.boardId.slice(0, 120),
       stateJson: JSON.stringify(body.state),
       snapshotDataUrl,
+      expectedVersion,
     });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith("BOARD_VERSION_CONFLICT:")) {
+      return NextResponse.json(
+        { error: "Board changed elsewhere. Reloading the latest version.", currentVersion: Number(error.message.split(":")[1]) },
+        { status: 409 },
+      );
+    }
     return authError(error) ?? NextResponse.json({ error: "Could not update the shared board." }, { status: 500 });
   }
 }

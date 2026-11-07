@@ -127,6 +127,107 @@ export function sanitizeBoardAction(tool, args, allowedStrokeIds) {
 export const dynamicTools = [
   {
     type: "function",
+    name: "board_add_strokes",
+    description: "Draw one or more freehand paths on an explicit page using world coordinates. Use observe_board first. Coordinates are board-world coordinates, not screenshot pixels.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: { type: "string" },
+        expectedVersion: { type: "integer", minimum: 0 },
+        strokes: {
+          type: "array",
+          minItems: 1,
+          maxItems: 40,
+          items: {
+            type: "object",
+            properties: {
+              points: {
+                type: "array",
+                minItems: 2,
+                maxItems: 500,
+                items: {
+                  type: "object",
+                  properties: { x: { type: "number" }, y: { type: "number" }, pressure: { type: "number", minimum: 0, maximum: 1 } },
+                  required: ["x", "y"],
+                  additionalProperties: false,
+                },
+              },
+              color: { type: "string" },
+              width: { type: "number", minimum: 0.5, maximum: 40 },
+              opacity: { type: "number", minimum: 0, maximum: 1 },
+              kind: { enum: ["pen", "highlighter"] },
+            },
+            required: ["points"],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ["pageId", "strokes"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "board_move_strokes",
+    description: "Move identified editable strokes or groups on an explicit page by a world-coordinate delta. Use exact IDs from observe_board.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: { type: "string" },
+        strokeIds: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 100 },
+        dx: { type: "number" },
+        dy: { type: "number" },
+        expectedVersion: { type: "integer", minimum: 0 },
+      },
+      required: ["pageId", "strokeIds", "dx", "dy"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "board_delete_strokes",
+    description: "Delete identified editable strokes or their groups from an explicit page. This has the same content-editing authority as the delegating user, so use exact IDs and the fewest necessary deletions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pageId: { type: "string" },
+        strokeIds: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 100 },
+        expectedVersion: { type: "integer", minimum: 0 },
+      },
+      required: ["pageId", "strokeIds"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "board_manage_page",
+    description: "Create, rename, or delete a board page. Page deletion is rejected when it would remove the final page.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: { enum: ["create", "rename", "delete"] },
+        pageId: { type: "string" },
+        name: { type: "string", maxLength: 80 },
+        afterPageId: { type: "string" },
+        expectedVersion: { type: "integer", minimum: 0 },
+      },
+      required: ["operation", "pageId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
+    name: "board_set_hint_level",
+    description: "Set the shared tutoring hint level from 0 to 5.",
+    inputSchema: {
+      type: "object",
+      properties: { level: { type: "integer", minimum: 0, maximum: 5 }, expectedVersion: { type: "integer", minimum: 0 } },
+      required: ["level"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function",
     name: "verify_arithmetic_equation",
     description: "Check whether a numeric equation or simple polynomial definite integral is true before writing a correction. For example, 1 + 2 = 4 is invalid, 1 + 2 = 3 is valid, and ∫_0^2(x^2+x-2)dx=2/3 is valid. Returns unknown for unsupported equations with variables.",
     inputSchema: {

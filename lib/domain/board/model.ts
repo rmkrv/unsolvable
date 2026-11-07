@@ -23,6 +23,13 @@ export type BoardDocument = {
   pages: Page[];
   activePageId: string;
   viewport: Viewport;
+  snapshot?: {
+    width: number;
+    height: number;
+    cssWidth: number;
+    cssHeight: number;
+    pixelRatio: number;
+  };
   hintLevel: number;
   request?: { message: string; trigger: string; at: number } | null;
 };

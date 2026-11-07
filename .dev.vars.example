@@ -7,5 +7,8 @@ NEON_BRANCH=
 NEON_BRANCH_ID=
 NEON_FUNCTION_HOST_SUFFIX=
 
-# Generate a unique local secret with at least 32 characters.
+# Generate unique local secrets with at least 32 characters.
 NEON_AUTH_COOKIE_SECRET=
+
+# The exact MCP audience. Use the public HTTPS URL in hosted environments.
+MCP_RESOURCE_URL=http://127.0.0.1:5173/mcp

@@ -14,7 +14,7 @@ export type SharedBoardResponse = {
 
 export interface BoardGateway {
   read(after: number): Promise<SharedBoardResponse>;
-  save(document: BoardDocument, snapshotDataUrl?: string): Promise<{ eventVersion: number; updatedAt: number }>;
+  save(document: BoardDocument, snapshotDataUrl?: string, expectedVersion?: number): Promise<{ eventVersion: number; updatedAt: number }>;
 }
 
 async function jsonOrError<T>(response: Response, fallback: string): Promise<T> {
@@ -29,11 +29,11 @@ export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGate
       const response = await fetcher(`/api/board?after=${after}`, { cache: "no-store" });
       return jsonOrError<SharedBoardResponse>(response, "Shared board unavailable");
     },
-    async save(document, snapshotDataUrl) {
+    async save(document, snapshotDataUrl, expectedVersion) {
       const response = await fetcher("/api/board", {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ boardId: document.boardId, state: document, snapshotDataUrl }),
+        body: JSON.stringify({ boardId: document.boardId, state: document, snapshotDataUrl, expectedVersion }),
       });
       return jsonOrError<{ eventVersion: number; updatedAt: number }>(response, "Could not sync the shared board.");
     },

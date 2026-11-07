@@ -1,6 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeBoardAction } from "../bridge/actions.mjs";
+import { dynamicTools, sanitizeBoardAction } from "../bridge/actions.mjs";
+
+test("exposes direct board mutation tools for agent/user capability parity", () => {
+  const names = new Set(dynamicTools.map((tool) => tool.name));
+  for (const name of [
+    "board_add_strokes",
+    "board_move_strokes",
+    "board_delete_strokes",
+    "board_manage_page",
+    "board_set_hint_level",
+  ]) assert.ok(names.has(name), `${name} should be available`);
+});
 
 test("filters hallucinated stroke ids from visual feedback", () => {
   const result = sanitizeBoardAction(

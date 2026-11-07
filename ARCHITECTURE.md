@@ -15,7 +15,7 @@ lib/client ---------> lib/domain <--------- lib/server
 ```
 
 - `lib/domain` owns board data, board operations, and tutor commands. It must not import React, Next.js, Cloudflare, databases, billing, authentication, or network clients.
-- `lib/client` owns browser storage, canvas rendering, HTTP gateways, and tutor transports.
+- `lib/client` owns browser storage, canvas rendering, and HTTP gateways.
 - `lib/server` owns request identity, application services, repository contracts, and infrastructure adapters.
 - `app` contains delivery concerns: pages and HTTP/MCP route handlers.
 - `components` compose UI state with domain functions and client adapters.
@@ -32,9 +32,9 @@ Runtime providers stay behind replaceable boundaries:
 | --- | --- | --- | --- |
 | Board model | `lib/domain/board/model.ts` | Provider-independent | Same package |
 | Board persistence | `lib/server/boards/board-repository.ts` | Neon PostgreSQL | Same contract, optional extracted API |
-| Browser board sync | `lib/client/board/board-gateway.ts` | `/api/board` polling | HTTP bootstrap + Durable Object WebSocket |
+| Browser board sync | `lib/client/board/board-gateway.ts` | Versioned `/api/board` polling | HTTP bootstrap + Durable Object WebSocket |
 | Browser recovery | `lib/client/board/local-board-store.ts` | `localStorage` | Keep as offline recovery |
-| Tutor transport | `lib/client/tutor/tutor-transport.ts` | Local Codex or hosted MCP | OpenAI Responses and Realtime APIs |
+| AI tool transport | `app/mcp/route.ts` | Provider-neutral Streamable HTTP MCP | Same protocol across compatible clients |
 | Request identity | `lib/server/auth/*` | Neon Auth session | Same provider behind an extracted API if needed |
 | Canvas | `lib/client/board/canvas-renderer.ts` | Canvas 2D | Same renderer fed by synchronized state |
 
@@ -56,15 +56,17 @@ The repository maps the Neon Auth subject to an internal application user. Perso
 
 ## Tutor flow
 
-Board actions are provider-independent commands. The current Codex/MCP integration validates an action, writes it to the action queue, and the browser applies it through the same renderer used for student work.
+Board actions are provider-independent commands. The MCP integration validates an action, compiles visual actions into board commands, and persists them with the same event-version rules used by browser edits. The browser observes the new version and renders it. The action queue remains only for transient effects such as speech.
 
-The production AI adapter will replace the transport and queue mechanism, but it must continue to emit the same validated domain commands. AI actions must not directly manipulate React state, Canvas APIs, or database rows.
+The production AI adapter can replace the transport, but it must continue to emit the same validated domain commands. AI actions must not directly manipulate React state, Canvas APIs, or database rows.
 
 ## Authentication boundary
 
 Routes use `lib/server/auth/request-identity.ts` instead of reading provider cookies directly. Server-rendered pages use `lib/server/auth/current-user.ts`. Only `lib/server/auth/neon.ts` configures Neon Auth and Cloudflare bindings.
 
 Authentication establishes identity. Board ownership and collaboration roles remain separate application authorization checks.
+
+Development and production use the same provider-neutral MCP authorization path. Codex, Claude, or another compatible client discovers Neon OAuth from protected-resource metadata and obtains an identity token whose audience is the exact MCP URL. PostgreSQL board membership determines effective board rights. The MCP route does not accept browser cookies, local-profile credentials, model-provider keys, or development bypass tokens. An agent acting on behalf of a user is limited by that user's board membership; future elevated agents require a separate principal and an explicit stored grant.
 
 ## Testing
 
