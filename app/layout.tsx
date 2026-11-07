@@ -1,14 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Unsolvable — AI Engineering Tutor",
+  title: "Unsolvable — Think through difficult mathematics",
   description:
-    "A live engineering whiteboard where your connected AI assistant observes, verifies, speaks, and draws with you.",
+    "An AI-assisted mathematical whiteboard for deliberate practice, precise diagnosis, and collaborative problem-solving.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -17,7 +23,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="unsolvable">
       <body className="antialiased">{children}</body>
     </html>
   );

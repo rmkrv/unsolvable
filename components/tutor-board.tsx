@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   ArrowUpRight,
   Cable,
@@ -1231,10 +1232,10 @@ export default function TutorBoard({ displayName }: { displayName: string }) {
   return (
     <main className="tutor-shell">
       <header className="topbar">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true"><span /><span /></div>
-          <div><div className="brand-name">Unsolvable</div><div className="brand-subtitle">Engineering tutor</div></div>
-        </div>
+        <Link className="brand-block" href="/home" aria-label="Back to home">
+          <div className="brand-mark" aria-hidden="true" />
+          <div><div className="brand-name">unsolvable</div><div className="brand-subtitle">Mathematical tutor</div></div>
+        </Link>
 
         <button className="problem-title" type="button" onClick={() => setPagesOpen((open) => !open)}>
           <span className="problem-kicker">Open board</span>

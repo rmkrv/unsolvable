@@ -2,6 +2,8 @@
 
 Unsolvable is a private, cloud-first full-stack application. The repository is intentionally a single deployable application today, with boundaries that can be moved into a monorepo later without rewriting the board domain.
 
+Product-level route, account, learning, and collaboration decisions are recorded in [`docs/PRODUCT_ARCHITECTURE_DECISIONS.md`](docs/PRODUCT_ARCHITECTURE_DECISIONS.md).
+
 ## Dependency direction
 
 ```text
