@@ -8,25 +8,25 @@
   default: true;
   prefersdark: false;
   color-scheme: light;
-  --color-base-100: #f7f8f5;
-  --color-base-200: #ecefeb;
-  --color-base-300: #d9ded7;
-  --color-base-content: #181c1a;
-  --color-primary: #0f6b5d;
+  --color-base-100: #fbfcff;
+  --color-base-200: #f4f6fb;
+  --color-base-300: #e2e7f0;
+  --color-base-content: #172033;
+  --color-primary: #2f5bea;
   --color-primary-content: #ffffff;
-  --color-secondary: #65726c;
-  --color-secondary-content: #ffffff;
-  --color-accent: #e36f3f;
-  --color-accent-content: #ffffff;
-  --color-neutral: #202522;
+  --color-secondary: #e9edf5;
+  --color-secondary-content: #24324a;
+  --color-accent: #eef2ff;
+  --color-accent-content: #2f5bea;
+  --color-neutral: #172033;
   --color-neutral-content: #f8f9fc;
-  --color-info: #356f91;
+  --color-info: #2f5bea;
   --color-info-content: #ffffff;
-  --color-success: #2c7a50;
+  --color-success: #23845e;
   --color-success-content: #ffffff;
-  --color-warning: #b45b2b;
+  --color-warning: #a56715;
   --color-warning-content: #ffffff;
-  --color-error: #b9423a;
+  --color-error: #c33d4a;
   --color-error-content: #ffffff;
   --radius-selector: 0.5rem;
   --radius-field: 0.5rem;
@@ -38,19 +38,42 @@
   --noise: 0;
 }
 
-:root {
-  --ink: #181c1a;
-  --ink-soft: #5e6863;
-  --blue: #0f6b5d;
-  --blue-soft: #e2f0eb;
-  --paper: #f7f8f5;
-  --chrome: #ecefeb;
-  --line: #d9ded7;
-  --danger: #b9423a;
-  --green: #2c7a50;
+@theme inline {
+  --color-background: var(--color-base-100);
+  --color-foreground: var(--color-base-content);
+  --color-card: #ffffff;
+  --color-card-foreground: var(--color-base-content);
+  --color-popover: #ffffff;
+  --color-popover-foreground: var(--color-base-content);
+  --color-primary-foreground: var(--color-primary-content);
+  --color-secondary-foreground: var(--color-secondary-content);
+  --color-muted: var(--color-base-200);
+  --color-muted-foreground: #697386;
+  --color-accent-foreground: var(--color-accent-content);
+  --color-destructive: var(--color-error);
+  --color-border: var(--color-base-300);
+  --color-input: var(--color-base-300);
+  --color-ring: var(--color-primary);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-* { box-sizing: border-box; }
+:root {
+  --radius: 0.7rem;
+  --ink: #172033;
+  --ink-soft: #697386;
+  --blue: #2f5bea;
+  --blue-soft: #eef2ff;
+  --paper: #fbfcff;
+  --chrome: #f4f6fb;
+  --line: #e2e7f0;
+  --danger: #c33d4a;
+  --green: #23845e;
+}
+
+* { box-sizing: border-box; border-color: var(--color-border); }
 html, body { width: 100%; min-height: 100%; }
 body {
   margin: 0;
@@ -63,6 +86,24 @@ body {
 }
 button, input { font: inherit; }
 button { color: inherit; }
+
+@keyframes app-page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes motion-card-enter {
+  from { opacity: 0; transform: translateY(10px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+  .app-page-enter { animation: app-page-enter 420ms cubic-bezier(.22, 1, .36, 1) backwards; }
+  .motion-card { animation: motion-card-enter 480ms cubic-bezier(.22, 1, .36, 1) backwards; }
+  .motion-card:nth-child(2) { animation-delay: 60ms; }
+  .motion-card:nth-child(3) { animation-delay: 100ms; }
+}
 
 .tutor-shell { width: 100vw; height: 100dvh; overflow: hidden; display: grid; grid-template-rows: 64px minmax(0, 1fr); background: var(--paper); }
 .topbar {
@@ -78,7 +119,7 @@ button { color: inherit; }
   backdrop-filter: blur(18px);
 }
 .brand-block { display: flex; align-items: center; gap: 11px; min-width: 0; color: inherit; text-decoration: none; }
-.brand-mark { width: 31px; height: 31px; flex: 0 0 auto; background: url("/brand/empty-set-mark.png") center / 125% no-repeat; }
+.brand-mark { width: 38px; height: 38px; flex: 0 0 auto; background: url("/brand/unsolvable-logo.png") center / contain no-repeat; }
 .brand-name { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-weight: 780; font-size: 16px; line-height: 17px; letter-spacing: -.045em; }
 .brand-subtitle { color: color-mix(in srgb, var(--ink) 48%, transparent); font-size: 9px; font-weight: 600; letter-spacing: .055em; margin-top: 3px; }
 .problem-title {
@@ -179,7 +220,7 @@ button { color: inherit; }
 .connection-close:hover { background: #efeee9; color: var(--ink); }
 .connection-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 13px; background: var(--blue-soft); color: var(--blue); }
 .connection-dialog > p { margin: 18px 0 5px; color: var(--blue); font-size: 10px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
-.connection-dialog h2 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 28px; letter-spacing: -.025em; }
+.connection-dialog h2 { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 28px; font-weight: 720; letter-spacing: -.035em; }
 .connection-copy { margin: 18px 0 20px; color: #555d6b; font-size: 13px; line-height: 1.55; }
 .connection-targets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: -7px 0 16px; }
 .connection-targets button { height: 34px; border: 1px solid #dedfe6; border-radius: 9px; background: white; color: #666d7c; font-size: 10px; font-weight: 700; cursor: pointer; }
@@ -199,7 +240,7 @@ button { color: inherit; }
 .signin-shell { width: 100vw; height: 100dvh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 35%, #fff 0, #f7f5ef 55%, #efede6 100%); }
 .signin-card { width: min(520px, 100%); padding: 42px; border: 1px solid #dfddd6; border-radius: 24px; background: rgba(255,255,255,.82); box-shadow: 0 25px 80px rgba(31,36,51,.12); }
 .signin-card > p { margin: 20px 0 7px; color: var(--blue); font-size: 10px; font-weight: 800; letter-spacing: .11em; text-transform: uppercase; }
-.signin-card h1 { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: clamp(29px, 5vw, 43px); line-height: 1.05; letter-spacing: -.035em; }
+.signin-card h1 { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: clamp(29px, 5vw, 43px); font-weight: 760; line-height: 1.05; letter-spacing: -.045em; }
 .signin-card > span { display: block; margin: 18px 0 25px; color: #696f7c; font-size: 13px; line-height: 1.55; }
 .signin-card > a { display: inline-flex; align-items: center; justify-content: center; height: 43px; padding: 0 18px; border-radius: 11px; background: var(--ink); color: white; font-size: 12px; font-weight: 750; text-decoration: none; }
 .auth-form { display: grid; gap: 14px; }

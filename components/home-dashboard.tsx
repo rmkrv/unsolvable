@@ -1,15 +1,26 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BookOpen,
-  Calculator,
   Clock3,
+  LayoutGrid,
+  PenLine,
   Sparkles,
   Target,
   Users,
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { NewBoardButton } from "@/components/new-board-button";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import type { AuthenticatedUser } from "@/lib/server/auth/current-user";
 import type { BoardSummary } from "@/lib/server/boards/board-repository";
 import type { HomeInsights } from "@/lib/server/users/user-repository";
@@ -41,11 +52,8 @@ export function HomeDashboard({
     <HomePageFrame user={user}>
       <HomeDashboardHeader user={user} isPreview={isPreview} />
       <PrimaryHomeSection recentBoards={recentBoards} insights={insights} />
-      <section className="mt-5 grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <FriendsHomeCard insights={insights} />
-        <RecentBoardsHomeCard recentBoards={recentBoards} />
-      </section>
-      <QuickStartSection />
+      <QuickStartSection isPreview={isPreview} />
+      <RecentBoardsHomeCard recentBoards={recentBoards} />
     </HomePageFrame>
   );
 }
@@ -53,7 +61,7 @@ export function HomeDashboard({
 export function HomePageFrame({ user, children }: { user: AuthenticatedUser; children: React.ReactNode }) {
   return (
     <AppShell user={user} active="home" title="Home">
-      <div className="mx-auto w-full max-w-[1440px] px-5 py-7 sm:px-8 sm:py-10 xl:px-12">
+      <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 xl:px-10">
         {children}
       </div>
     </AppShell>
@@ -65,20 +73,16 @@ export function HomeDashboardHeader({ user, isPreview = false }: { user: Authent
   const dateLabel = new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 
   return (
-    <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+    <header className="flex flex-col justify-between gap-4 border-b border-border pb-7 sm:flex-row sm:items-end">
       <div>
         <div className="flex items-center gap-2">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-base-content/42">{dateLabel}</p>
-          {isPreview && <span className="badge badge-outline badge-sm">Design preview</span>}
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{dateLabel}</p>
+          {isPreview && <Badge variant="outline">Design preview</Badge>}
         </div>
-        <h2 className="mt-2 font-serif text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Good to see you, {firstName}.</h2>
-        <p className="mt-3 text-base text-base-content/58">Pick up the thread, or start with the idea that needs attention.</p>
+        <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground sm:text-4xl">Welcome back, {firstName}</h2>
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">Continue your work or choose one focused next step.</p>
       </div>
-      <NewBoardButton
-        className="btn hidden sm:inline-flex"
-        href={isPreview ? "/auth/sign-up?redirectTo=/boards/current" : undefined}
-      />
-    </div>
+    </header>
   );
 }
 
@@ -87,85 +91,107 @@ export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: B
   const boardHref = recent ? `/boards/${encodeURIComponent(recent.boardId)}` : "/boards/current";
 
   return (
-    <section className="mt-9 grid gap-5 xl:grid-cols-[1.45fr_0.85fr]">
-      <article className="card overflow-hidden bg-neutral text-neutral-content shadow-xl shadow-neutral/10">
-        <div className="card-body min-h-[330px] justify-between p-7 sm:p-9">
-          <div className="flex items-start justify-between gap-5">
-            <div>
-              <span className="badge border-white/15 bg-white/8 text-white/75">{recent ? "Continue practice" : "Start practicing"}</span>
-              <h3 className="mt-5 max-w-2xl font-serif text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">{recent ? recent.title : "Open a blank board and work through the difficult part."}</h3>
-              <p className="mt-4 max-w-xl leading-7 text-neutral-content/62">{recent ? "Your pages and tutor context are ready where you left them." : "Write naturally, ask for a hint when you need one, and keep every step in one place."}</p>
-            </div>
-            <div className="hidden size-16 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/8 sm:flex"><Sparkles size={26} /></div>
+    <section className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.8fr)]">
+      <Card className="motion-card overflow-hidden border-primary/15 bg-card shadow-sm">
+        <CardHeader className="pb-0">
+          <div className="mb-5 flex items-center justify-between gap-4">
+            <Badge variant="secondary">{recent ? "Resume session" : "Start practicing"}</Badge>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary"><Sparkles size={18} /></div>
           </div>
-          <div className="card-actions mt-8 items-center justify-between gap-4">
-            <div className="flex items-center gap-2 text-xs text-neutral-content/52"><Clock3 size={14} /> {recent ? `Last opened ${formatRelativeTime(recent.lastOpenedAt)}` : "No boards yet"}</div>
-            <Link href={boardHref} className="btn btn-primary">{recent ? "Continue board" : "Create board"} <ArrowRight size={17} /></Link>
-          </div>
-        </div>
-      </article>
+          <CardTitle className="max-w-2xl text-3xl leading-tight tracking-[-0.035em] sm:text-4xl">
+            {recent ? recent.title : "Start a clear workspace for the problem in front of you."}
+          </CardTitle>
+          <CardDescription className="mt-2 max-w-xl text-sm leading-6 sm:text-base">
+            {recent ? "Your pages and tutor context are ready exactly where you left them." : "Write naturally, ask for a hint, and keep every step in one place."}
+          </CardDescription>
+        </CardHeader>
+        <CardFooter className="mt-auto flex-col items-start justify-between gap-4 pt-7 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 size={14} /> {recent ? `Last opened ${formatRelativeTime(recent.lastOpenedAt)}` : "No sessions yet"}</div>
+          <Button asChild size="lg">
+            <Link href={boardHref}>{recent ? "Continue board" : "Open a board"}<ArrowRight /></Link>
+          </Button>
+        </CardFooter>
+      </Card>
 
-      <article id="weak-spots" className="card card-border bg-base-100">
-        <div className="card-body p-6 sm:p-7">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-box bg-warning/12 text-warning"><Target size={20} /></div><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Weak spot</p><h3 className="font-semibold">{insights.weakSpot?.skillName || "Not enough evidence yet"}</h3></div></div>
-            {insights.weakSpot && <span className="badge badge-warning badge-soft badge-sm">{formatConfidence(insights.weakSpot.confidence)} confidence</span>}
-          </div>
-          {insights.weakSpot ? <>
-            <div className="mt-7 rounded-box bg-base-200 p-5">
-              <div className="flex items-end justify-between gap-3"><div><p className="text-3xl font-semibold tracking-tight">{insights.weakSpot.score}%</p><p className="mt-1 text-xs text-base-content/48">mastery estimate</p></div><p className="text-right text-xs leading-5 text-base-content/48">{insights.weakSpot.evidenceCount} evidence points</p></div>
-              <progress className="progress progress-warning mt-4 h-2" value={insights.weakSpot.score} max="100" />
-            </div>
-            <p className="mt-5 text-sm leading-6 text-base-content/58">This estimate is based on your saved practice evidence, not a permanent label.</p>
-          </> : <p className="mt-7 rounded-box bg-base-200 p-5 text-sm leading-6 text-base-content/58">Complete a few practice attempts and this section will show the first skill worth revisiting.</p>}
-          <div className="card-actions mt-2 justify-end"><Link className="btn btn-ghost btn-sm" href="/weak-spots">{insights.weakSpot ? "See evidence" : "Start diagnostic"} <ArrowRight size={15} /></Link></div>
-        </div>
-      </article>
+      <Card id="weak-spots" className="motion-card shadow-sm">
+        <CardHeader>
+          <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-foreground"><Target size={18} /></div>
+          <CardTitle className="mt-3 text-lg">Next focus</CardTitle>
+          <CardDescription>{insights.weakSpot ? "Based on your recent work" : "Build enough evidence to find a focus"}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {insights.weakSpot ? (
+            <>
+              <div>
+                <div className="flex items-end justify-between gap-3">
+                  <div><p className="font-semibold">{insights.weakSpot.skillName}</p><p className="mt-1 text-xs text-muted-foreground">{insights.weakSpot.evidenceCount} evidence points</p></div>
+                  <p className="text-2xl font-semibold tracking-tight">{insights.weakSpot.score}%</p>
+                </div>
+                <Progress className="mt-4" value={insights.weakSpot.score} />
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground">This estimate changes as you practice. It is a starting point, not a label.</p>
+            </>
+          ) : (
+            <p className="rounded-lg bg-muted p-4 text-sm leading-6 text-muted-foreground">Complete a few attempts and the first useful skill to revisit will appear here.</p>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/weak-spots">{insights.weakSpot ? "Practice this skill" : "Take a diagnostic"}<ArrowRight /></Link>
+          </Button>
+        </CardFooter>
+      </Card>
     </section>
   );
 }
 
-export function FriendsHomeCard({ insights }: { insights: HomeInsights }) {
+export function QuickStartSection({ isPreview = false }: { isPreview?: boolean }) {
   return (
-    <article id="friends" className="card card-border bg-base-100">
-      <div className="card-body p-6 sm:p-7">
-        <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Study together</p><h3 className="card-title mt-1">Friends</h3></div><Users className="text-base-content/35" size={22} /></div>
-        <div className="mt-5 flex items-center">
-          <div className="flex size-11 items-center justify-center rounded-full bg-base-200 text-sm font-bold">{insights.friendCount}</div>
-          <div className="ml-4"><p className="text-sm font-semibold">{insights.friendCount ? `${insights.friendCount} study ${insights.friendCount === 1 ? "partner" : "partners"}` : "No study partners yet"}</p><p className="mt-0.5 text-xs text-base-content/48">{insights.pendingRequestCount ? `${insights.pendingRequestCount} pending request${insights.pendingRequestCount === 1 ? "" : "s"}` : "Find someone when you are ready to collaborate."}</p></div>
-        </div>
-        <div className="mt-6 flex gap-2"><Link className="btn btn-sm flex-1" href="/friends">Find a partner</Link><Link className="btn btn-ghost btn-sm" href="/friends">Requests <span className="badge badge-sm">{insights.pendingRequestCount}</span></Link></div>
+    <section className="mt-7" aria-labelledby="quick-actions-title">
+      <div className="mb-3 flex items-center justify-between">
+        <h3 id="quick-actions-title" className="text-sm font-semibold">Quick actions</h3>
+        <p className="hidden text-xs text-muted-foreground sm:block">Two different ways to start something new</p>
       </div>
-    </article>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card className="motion-card gap-4 py-5 shadow-none transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-sm motion-reduce:transform-none motion-reduce:transition-none">
+          <CardContent className="flex items-center gap-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground"><PenLine size={20} /></div>
+            <div className="min-w-0 flex-1"><CardTitle className="text-base">New blank board</CardTitle><CardDescription className="mt-1">Work freely from a clean page.</CardDescription></div>
+            <NewBoardButton className="shrink-0" href={isPreview ? "/auth/sign-up?redirectTo=/boards/current" : undefined} />
+          </CardContent>
+        </Card>
+        <Card className="motion-card gap-4 py-5 shadow-none transition-[transform,box-shadow,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-sm motion-reduce:transform-none motion-reduce:transition-none">
+          <CardContent className="flex items-center gap-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground"><Users size={20} /></div>
+            <div className="min-w-0 flex-1"><CardTitle className="text-base">Study together</CardTitle><CardDescription className="mt-1">Open your circle and invitations.</CardDescription></div>
+            <Button asChild variant="outline"><Link href="/friends">Open<ArrowRight /></Link></Button>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
   );
 }
 
 export function RecentBoardsHomeCard({ recentBoards }: { recentBoards: BoardSummary[] }) {
   return (
-    <article id="recent-boards" className="card card-border bg-base-100">
-      <div className="card-body p-0">
-        <div className="flex items-center justify-between px-6 pb-3 pt-6 sm:px-7 sm:pt-7"><div><p className="text-xs font-bold uppercase tracking-[0.14em] text-base-content/40">Your workspace</p><h3 className="card-title mt-1">Recent boards</h3></div><Link className="btn btn-ghost btn-sm" href="/boards">All boards <ArrowRight size={15} /></Link></div>
-        <ul className="list px-2 pb-2 sm:px-3 sm:pb-3">
+    <Card id="recent-boards" className="motion-card mt-7 gap-0 shadow-none">
+      <CardHeader className="flex-row items-center justify-between border-b border-border pb-5">
+        <div><CardTitle className="text-lg">Recent boards</CardTitle><CardDescription className="mt-1">Your latest work, in one place.</CardDescription></div>
+        <Button asChild variant="ghost" size="sm"><Link href="/boards">View all<ArrowRight /></Link></Button>
+      </CardHeader>
+      <CardContent className="px-3 py-2 sm:px-4">
+        <ul className="divide-y divide-border">
           {recentBoards.map((board) => (
-            <li className="list-row items-center rounded-box hover:bg-base-200" key={board.boardId}>
-              <div className="flex size-12 items-center justify-center rounded-box bg-primary/10 font-serif text-xs font-semibold text-primary">{board.title.slice(0, 2).toUpperCase()}</div>
-              <div className="list-col-grow min-w-0"><Link href={`/boards/${encodeURIComponent(board.boardId)}`} className="truncate text-sm font-semibold hover:underline">{board.title}</Link><p className="mt-1 flex items-center gap-2 text-xs text-base-content/45"><span>{board.subject || "Mathematics"}</span><span>·</span><span>{formatRelativeTime(board.lastOpenedAt)}</span></p></div>
-              <Link href={`/boards/${encodeURIComponent(board.boardId)}`} className="btn btn-ghost btn-circle btn-sm" aria-label={`Open ${board.title}`}><ArrowRight size={17} /></Link>
+            <li className="flex items-center gap-4 rounded-lg px-2 py-3 transition-colors hover:bg-muted/70" key={board.boardId}>
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><LayoutGrid size={17} /></div>
+              <div className="min-w-0 flex-1"><Link href={`/boards/${encodeURIComponent(board.boardId)}`} className="block truncate text-sm font-medium hover:text-primary">{board.title}</Link><p className="mt-1 text-xs text-muted-foreground">{board.subject || "Mathematics"} · {formatRelativeTime(board.lastOpenedAt)}</p></div>
+              <Button asChild variant="ghost" size="icon-sm"><Link href={`/boards/${encodeURIComponent(board.boardId)}`} aria-label={`Open ${board.title}`}><ArrowRight /></Link></Button>
             </li>
           ))}
-          {!recentBoards.length && <li className="px-5 py-8 text-center text-sm text-base-content/50">Your boards will appear here after you create one.</li>}
+          {!recentBoards.length && <li className="px-4 py-10 text-center text-sm text-muted-foreground">Your boards will appear here after you create one.</li>}
         </ul>
-      </div>
-    </article>
-  );
-}
-
-export function QuickStartSection() {
-  return (
-    <section className="mt-5 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      <article className="card card-border bg-base-200/70"><div className="card-body"><BookOpen size={19} className="text-primary" /><h3 className="card-title mt-2 text-base">Start from a topic</h3><p className="text-sm leading-6 text-base-content/55">Choose a skill, difficulty, and how much help you want.</p><div className="card-actions mt-2"><Link href="/boards/current" className="btn btn-ghost btn-sm px-0">Browse practice <ArrowRight size={15} /></Link></div></div></article>
-      <article className="card card-border bg-base-200/70"><div className="card-body"><Calculator size={19} className="text-success" /><h3 className="card-title mt-2 text-base">Take a short diagnostic</h3><p className="text-sm leading-6 text-base-content/55">Five purposeful problems to find the next useful focus.</p><div className="card-actions mt-2"><Link href="/weak-spots" className="btn btn-ghost btn-sm px-0">Start diagnostic <ArrowRight size={15} /></Link></div></div></article>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -177,10 +203,4 @@ function formatRelativeTime(value: number) {
   if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
   const days = Math.round(hours / 24);
   return `${days} day${days === 1 ? "" : "s"} ago`;
-}
-
-function formatConfidence(value: number) {
-  if (value >= 75) return "High";
-  if (value >= 45) return "Medium";
-  return "Low";
 }

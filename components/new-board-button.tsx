@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export function NewBoardButton({ className = "btn", href }: { className?: string; href?: string }) {
+export function NewBoardButton({ className, href }: { className?: string; href?: string }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -30,15 +31,15 @@ export function NewBoardButton({ className = "btn", href }: { className?: string
   }
 
   if (href) {
-    return <Link className={className} href={href}><Plus size={17} />New board</Link>;
+    return <Button asChild className={className}><Link href={href}><Plus />New board</Link></Button>;
   }
 
   return (
     <>
-      <button type="button" className={className} onClick={createBoard} disabled={creating} title={error || undefined}>
-        {creating ? <span className="loading loading-spinner loading-xs" /> : <Plus size={17} />}
+      <Button type="button" className={className} onClick={createBoard} disabled={creating} title={error || undefined}>
+        {creating ? <span className="size-4 animate-spin rounded-full border-2 border-current border-r-transparent" /> : <Plus />}
         New board
-      </button>
+      </Button>
       {error && <span className="sr-only" role="alert">{error}</span>}
     </>
   );

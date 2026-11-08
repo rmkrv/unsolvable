@@ -37,7 +37,7 @@ export default function StartPage() {
               <Sparkles size={14} className="text-primary" />
               An AI tutor that works on the page with you
             </div>
-            <h1 className="font-serif text-5xl font-semibold leading-[0.98] tracking-[-0.045em] sm:text-6xl lg:text-7xl">
+            <h1 className="text-5xl font-semibold leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:text-7xl">
               Stay with the problem long enough to <span className="text-primary">understand it.</span>
             </h1>
             <p className="mt-7 max-w-xl text-lg leading-8 text-base-content/62 sm:text-xl">
@@ -81,7 +81,7 @@ export default function StartPage() {
                     backgroundSize: "28px 28px",
                   }}
                 >
-                  <div className="max-w-lg font-serif text-[1.05rem] leading-8 text-base-content sm:text-xl sm:leading-9">
+                  <div className="max-w-lg font-mono text-[1.05rem] leading-8 text-base-content sm:text-xl sm:leading-9">
                     <p className="mb-6 font-sans text-xs font-bold uppercase tracking-[0.16em] text-base-content/38">Show that the limit exists</p>
                     <p>lim <span className="text-sm">x→2</span> <span className="ml-2">(x² − 4) / (x − 2)</span></p>
                     <p className="mt-5">= <span className="ml-3 line-through decoration-error/70 decoration-2">(x − 2)² / (x − 2)</span></p>
@@ -109,7 +109,7 @@ export default function StartPage() {
         <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.75fr_1.25fr] lg:items-start">
           <div className="max-w-xl">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-primary">One learning loop</p>
-            <h2 className="mt-4 font-serif text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">Think freely. Diagnose precisely. Practice deliberately.</h2>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">Think freely. Diagnose precisely. Practice deliberately.</h2>
             <p className="mt-5 text-base leading-7 text-base-content/60">Unsolvable keeps the board, the evidence, and the next useful problem in one place—without replacing the work of thinking.</p>
           </div>
 
@@ -142,13 +142,13 @@ export default function StartPage() {
       <section className="px-5 py-24 sm:px-8 lg:px-10">
         <div className="mx-auto max-w-5xl text-center">
           <BadgeCheck className="mx-auto text-primary" size={30} />
-          <h2 className="mt-5 font-serif text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">Serious help for difficult material.</h2>
+          <h2 className="mt-5 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">Serious help for difficult material.</h2>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-base-content/60">Built for the stretch from upper-secondary mathematics into the first demanding university courses—and clear enough to meet a younger learner where they are.</p>
           <Link className="btn mt-8" href="/auth/sign-up?redirectTo=/home">Create your workspace <ArrowRight size={17} /></Link>
         </div>
       </section>
 
-      <footer className="footer footer-center border-t border-base-300 bg-base-200 px-6 py-10 text-base-content/55 sm:footer-horizontal sm:justify-between">
+      <footer className="footer footer-center border-t border-base-300 bg-base-200 px-6 py-10 text-center text-base-content/55">
         <Brand compact />
         <nav className="flex flex-wrap justify-center gap-5 text-sm">
           <a className="link link-hover" href="#practice">Product</a>

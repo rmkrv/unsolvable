@@ -10,11 +10,11 @@ export default async function ProfileSettingsPage() {
   const [profile, billing] = await Promise.all([getUserProfile(user), getUserBilling(user)]);
   return (
     <AppShell user={user} active="settings" title="Settings">
-      <div className="mx-auto w-full max-w-6xl px-5 py-7 sm:px-8 sm:py-10 xl:px-12">
-        <div className="mb-8">
-          <div className="flex items-center gap-2"><p className="text-xs font-bold uppercase tracking-[0.18em] text-base-content/42">Personal workspace</p></div>
-          <h2 className="mt-2 font-serif text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Account settings</h2>
-          <p className="mt-3 max-w-2xl text-base leading-7 text-base-content/58">Manage how you appear, how you sign in, and what happens to your data.</p>
+      <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 xl:px-10">
+        <div className="mb-7 border-b border-border pb-7">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Personal workspace</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-foreground sm:text-4xl">Account settings</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">Manage your profile, security, billing, and account in one place.</p>
         </div>
         <SettingsPreview name={profile.displayName} email={user.email} isDiscoverable={profile.isDiscoverable} billingPlan={billing.plan} billingConnected={billing.isProviderConnected} />
       </div>

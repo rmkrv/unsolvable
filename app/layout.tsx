@@ -6,8 +6,8 @@ export const metadata: Metadata = {
   description:
     "An AI-assisted mathematical whiteboard for deliberate practice, precise diagnosis, and collaborative problem-solving.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
   },
 };
 

@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import {
-  FriendsHomeCard,
   HomeDashboardHeader,
   HomePageFrame,
   PrimaryHomeSection,
@@ -8,7 +7,6 @@ import {
   RecentBoardsHomeCard,
 } from "@/components/home-dashboard";
 import {
-  FriendsCardSkeleton,
   HomeHeaderSkeleton,
   PrimarySectionSkeleton,
   RecentBoardsSkeleton,
@@ -31,16 +29,10 @@ export default async function HomePage() {
         <PrimaryDashboard user={user} />
       </Suspense>
 
-      <section className="mt-5 grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-        <Suspense fallback={<FriendsCardSkeleton />}>
-          <FriendsDashboard user={user} />
-        </Suspense>
-        <Suspense fallback={<RecentBoardsSkeleton />}>
-          <RecentBoardsDashboard userId={user.userId} />
-        </Suspense>
-      </section>
-
       <QuickStartSection />
+      <Suspense fallback={<RecentBoardsSkeleton />}>
+        <RecentBoardsDashboard userId={user.userId} />
+      </Suspense>
     </HomePageFrame>
   );
 }
@@ -56,11 +48,6 @@ async function PrimaryDashboard({ user }: { user: AuthenticatedUser }) {
     loadHomeOverview(user.userId, displayNameFor(user)),
   ]);
   return <PrimaryHomeSection recentBoards={recentBoards} insights={insights} />;
-}
-
-async function FriendsDashboard({ user }: { user: AuthenticatedUser }) {
-  const { insights } = await loadHomeOverview(user.userId, displayNameFor(user));
-  return <FriendsHomeCard insights={insights} />;
 }
 
 async function RecentBoardsDashboard({ userId }: { userId: string }) {
