@@ -35,8 +35,8 @@ Updated: 2026-11-03
 - The board interface changed from **Connect Codex** to **Codex connected** after the first authenticated MCP tool call.
 - An unsigned local loopback MCP client completed `initialize`, listed the tools, and verified the incorrect factorization.
 - The live MCP route listed `verify_arithmetic_equation` and `board_write_equation`, accepted `1 + 2 = 3`, and refused `1 + 2 = 4` as a proposed correction.
-- The local bridge found the existing Codex ChatGPT sign-in, started a real Codex turn, called `observe_board`, and returned `2 pages.` to the board-facing HTTP endpoint. A second turn resumed the same Codex session and returned `2`.
-- With a Russian request asking for a Russian reply, a real local Codex turn responded in English: `There are 2 pages on the board.` Spoken tool text containing non-Latin letters is rejected for an English retry.
+- Historical local-bridge validation was completed, then the bridge was retired so development and production use the same OAuth-protected remote MCP path.
+- Spoken tool text containing non-Latin letters remains rejected for an English retry.
 
 ## Scenario status
 
@@ -56,4 +56,4 @@ Updated: 2026-11-03
 - Handwriting recognition quality depends on Codex vision over the PNG snapshot. Deterministic verification covers bounded univariate polynomial algebra and numeric arithmetic; other notation needs model reasoning.
 - The current schema keeps one active board per Site-scoped user.
 - Hosted plugin installation and a real authenticated Codex call still require publishing the Site; local preview verifies the same MCP contract with Sites mock authentication.
-- Local Codex CLI sign-in is detected automatically, and no MCP server setup is required. The local bridge must run in a normal terminal with write access to the user's Codex home; the restricted Codex task sandbox cannot provide that access.
+- AI clients now connect explicitly to the remote MCP endpoint and complete Neon OAuth; no local Codex profile is detected or reused.

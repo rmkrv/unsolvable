@@ -28,8 +28,8 @@ test("HTTP board gateway owns board route serialization", async () => {
   };
   const gateway = createHttpBoardGateway(fetcher);
 
-  assert.deepEqual(await gateway.read(9), { board: null, actions: [] });
-  assert.equal(requests[0].input, "/api/board?after=9");
+  assert.deepEqual(await gateway.read("board-1", 9), { board: null, actions: [] });
+  assert.equal(requests[0].input, "/api/board?boardId=board-1&after=9");
 
   const document = {
     boardId: "board-1",
@@ -38,34 +38,9 @@ test("HTTP board gateway owns board route serialization", async () => {
     viewport: { x: 0, y: 0, zoom: 1 },
     hintLevel: 2,
   };
-  assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA=="), { eventVersion: 4, updatedAt: 123 });
+  assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA==", 3), { eventVersion: 4, updatedAt: 123 });
   const body = JSON.parse(requests[1].init.body);
   assert.equal(body.boardId, "board-1");
   assert.deepEqual(body.state, document);
-});
-
-test("local tutor transport owns bridge status, turn, and interruption calls", async () => {
-  const { createTutorTransport } = await importTypeScript("lib/client/tutor/tutor-transport.ts");
-  const requests = [];
-  const fetcher = async (input, init) => {
-    requests.push({ input, init });
-    if (String(input).endsWith("/status")) return Response.json({ ready: true });
-    if (String(input).endsWith("/turn")) return Response.json({ reply: "Checked." });
-    return Response.json({ ok: true });
-  };
-  const transport = createTutorTransport("http://127.0.0.1:8787", fetcher);
-
-  assert.equal(transport.mode, "local");
-  assert.deepEqual(await transport.status(), { ready: true });
-  assert.deepEqual(
-    await transport.sendTurn({ boardId: "board-1", message: "Check", trigger: "explicit" }),
-    { reply: "Checked." },
-  );
-  await transport.interrupt("board-1");
-
-  assert.deepEqual(requests.map((request) => request.input), [
-    "http://127.0.0.1:8787/status",
-    "http://127.0.0.1:8787/turn",
-    "http://127.0.0.1:8787/interrupt",
-  ]);
+  assert.equal(body.expectedVersion, 3);
 });

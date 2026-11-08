@@ -3,7 +3,14 @@ import { auth } from "@/lib/server/auth/neon";
 export default auth.middleware({
   loginUrl: "/auth/sign-in",
   // API routes enforce session identity themselves so they can return JSON/RPC errors instead of HTML redirects.
-  publicRoutes: ["/api/board", "/mcp"],
+  publicRoutes: [
+    "/",
+    "/preview/home",
+    "/preview/settings",
+    "/api/board",
+    "/mcp",
+    "/.well-known/oauth-protected-resource",
+  ],
 });
 
 export const config = {

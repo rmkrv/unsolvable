@@ -11,7 +11,7 @@ export default async function SignOutPage({
   return (
     <main className="signin-shell">
       <section className="signin-card">
-        <div className="brand-mark" aria-hidden="true"><span /><span /></div>
+        <div className="brand-mark" aria-hidden="true" />
         <p>Unsolvable</p>
         <h1>Sign out?</h1>
         <span>Your saved boards will stay in your account.</span>

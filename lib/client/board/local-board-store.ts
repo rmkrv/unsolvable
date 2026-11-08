@@ -12,8 +12,8 @@ export type LocalBoardState = {
   hintLevel: number;
 };
 
-export function readLocalBoard(storage: Storage): LocalBoardState | null {
-  const raw = storage.getItem(STORAGE_KEY);
+export function readLocalBoard(storage: Storage, boardId?: string): LocalBoardState | null {
+  const raw = storage.getItem(boardId ? `${STORAGE_KEY}:${boardId}` : STORAGE_KEY);
   if (!raw) return null;
   const parsed = JSON.parse(raw) as Partial<LocalBoardState>;
   if (!Array.isArray(parsed.pages) || !parsed.pages.length) return null;
@@ -24,8 +24,8 @@ export function readLocalBoard(storage: Storage): LocalBoardState | null {
   };
 }
 
-export function writeLocalBoard(storage: Storage, state: LocalBoardState) {
-  storage.setItem(STORAGE_KEY, JSON.stringify(state));
+export function writeLocalBoard(storage: Storage, state: LocalBoardState, boardId?: string) {
+  storage.setItem(boardId ? `${STORAGE_KEY}:${boardId}` : STORAGE_KEY, JSON.stringify(state));
 }
 
 export function readBoardColor(storage: Storage) {
