@@ -44,7 +44,7 @@ export default function StartPage() {
               Think on an open whiteboard. Get precise help at the step that broke down. Build understanding you can use on the next problem.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link className="btn btn-primary btn-lg" href="/auth/sign-up?redirectTo=/home">
+              <Link className="btn btn-neutral btn-lg" href="/auth/sign-up?redirectTo=/home">
                 Start practicing <ArrowRight size={18} />
               </Link>
               <a className="btn btn-ghost btn-lg" href="#practice">See how it works</a>

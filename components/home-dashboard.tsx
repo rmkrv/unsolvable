@@ -92,11 +92,11 @@ export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: B
 
   return (
     <section className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.8fr)]">
-      <Card className="motion-card overflow-hidden border-primary/15 bg-card shadow-sm">
+      <Card className="motion-card overflow-hidden border-border bg-white shadow-sm">
         <CardHeader className="pb-0">
           <div className="mb-5 flex items-center justify-between gap-4">
             <Badge variant="secondary">{recent ? "Resume session" : "Start practicing"}</Badge>
-            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary"><Sparkles size={18} /></div>
+            <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-foreground"><Sparkles size={18} /></div>
           </div>
           <CardTitle className="max-w-2xl text-3xl leading-tight tracking-[-0.035em] sm:text-4xl">
             {recent ? recent.title : "Start a clear workspace for the problem in front of you."}
