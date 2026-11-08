@@ -90,7 +90,7 @@ button, input { font: inherit; }
 }
 
 @keyframes app-page-enter {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -101,10 +101,10 @@ button, input { font: inherit; }
 
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
-  .app-page-enter { animation: app-page-enter 420ms cubic-bezier(.22, 1, .36, 1) backwards; }
-  .motion-card { animation: motion-card-enter 480ms cubic-bezier(.22, 1, .36, 1) backwards; }
-  .motion-card:nth-child(2) { animation-delay: 60ms; }
-  .motion-card:nth-child(3) { animation-delay: 100ms; }
+  .app-page-enter { animation: app-page-enter 180ms cubic-bezier(.22, 1, .36, 1) backwards; }
+  .motion-card { animation: motion-card-enter 240ms cubic-bezier(.22, 1, .36, 1) backwards; }
+  .motion-card:nth-child(2) { animation-delay: 30ms; }
+  .motion-card:nth-child(3) { animation-delay: 50ms; }
 }
 
 .tutor-shell { width: 100vw; height: 100dvh; overflow: hidden; display: grid; grid-template-rows: 64px minmax(0, 1fr); background: var(--paper); }

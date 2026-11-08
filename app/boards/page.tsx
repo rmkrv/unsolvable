@@ -3,13 +3,13 @@ import { ArrowRight, Clock3, LayoutGrid } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { NewBoardButton } from "@/components/new-board-button";
 import { requireCurrentUser } from "@/lib/server/auth/current-user";
-import { listUserBoards } from "@/lib/server/boards/board-service";
+import { loadUserBoards } from "@/lib/server/home/dashboard-data";
 
 export const dynamic = "force-dynamic";
 
 export default async function BoardsPage() {
   const user = await requireCurrentUser("/boards");
-  const boards = await listUserBoards(user.userId, 50);
+  const boards = await loadUserBoards(user.userId, 50);
   return (
     <AppShell user={user} active="boards" title="Boards">
       <main className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 xl:px-12">

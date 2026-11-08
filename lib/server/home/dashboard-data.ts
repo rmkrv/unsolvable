@@ -6,9 +6,9 @@ import { getHomeOverviewForIdentity } from "@/lib/server/users/user-service";
 export const HOME_CACHE_TAG = "home-dashboard";
 const HOME_CACHE_SECONDS = 15;
 
-const cachedRecentBoards = unstable_cache(
-  (userId: string) => listUserBoards(userId, 5),
-  ["home-recent-boards"],
+const cachedUserBoards = unstable_cache(
+  (userId: string, limit: number) => listUserBoards(userId, limit),
+  ["user-boards"],
   { revalidate: HOME_CACHE_SECONDS, tags: [HOME_CACHE_TAG] },
 );
 
@@ -18,5 +18,6 @@ const cachedOverview = unstable_cache(
   { revalidate: HOME_CACHE_SECONDS, tags: [HOME_CACHE_TAG] },
 );
 
-export const loadRecentBoards = cache(cachedRecentBoards);
+export const loadUserBoards = cache(cachedUserBoards);
+export const loadRecentBoards = (userId: string) => loadUserBoards(userId, 5);
 export const loadHomeOverview = cache(cachedOverview);

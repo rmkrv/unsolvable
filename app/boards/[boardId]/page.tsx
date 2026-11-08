@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function BoardPage({ params }: { params: Promise<{ boardId: string }> }) {
   const { boardId } = await params;
   const user = await requireCurrentUser(`/boards/${encodeURIComponent(boardId)}`);
-  const board = await readTutorBoard(user.userId, boardId, false);
+  const [board] = await Promise.all([
+    readTutorBoard(user.userId, boardId, false),
+    markBoardOpened(user.userId, boardId),
+  ]);
   if (!board) notFound();
-  await markBoardOpened(user.userId, boardId);
   return <TutorBoard displayName={user.displayName} boardId={boardId} />;
 }

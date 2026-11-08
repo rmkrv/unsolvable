@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
+import { PendingLink } from "@/components/pending-link";
 import {
   Sheet,
   SheetContent,
@@ -113,10 +114,10 @@ export function AppShell({
             const Icon = item.icon;
             const isActive = active === item.id;
             return (
-              <Link key={item.id} href={item.href} className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-md text-[0.65rem] font-medium transition-[color,background-color,transform] duration-200 ease-out active:scale-95 motion-reduce:transform-none motion-reduce:transition-none ${isActive ? "text-primary" : "text-muted-foreground"}`}>
+              <PendingLink key={item.id} href={item.href} prefetch={item.id !== "practice"} indicatorClassName="absolute right-1.5 top-1.5 size-2.5" className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-md text-[0.65rem] font-medium transition-[color,background-color,transform] duration-150 ease-out active:scale-95 data-[pending=true]:bg-background data-[pending=true]:text-foreground motion-reduce:transform-none motion-reduce:transition-none ${isActive ? "text-primary" : "text-muted-foreground"}`}>
                 <Icon size={18} />
                 <span className="truncate">{item.label}</span>
-              </Link>
+              </PendingLink>
             );
           })}
         </nav>
@@ -136,9 +137,9 @@ function SidebarContent({ active }: { active: AppSection }) {
             const Icon = item.icon;
             const isActive = active === item.id;
             return (
-              <Link key={item.id} href={item.href} className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform,box-shadow] duration-200 ease-out active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none ${isActive ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}>
+              <PendingLink key={item.id} href={item.href} prefetch={item.id !== "practice"} indicatorClassName="ml-auto" className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform,box-shadow] duration-150 ease-out active:scale-[0.98] data-[pending=true]:bg-background data-[pending=true]:text-foreground data-[pending=true]:shadow-xs motion-reduce:transform-none motion-reduce:transition-none ${isActive ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}>
                 <Icon size={18} strokeWidth={1.8} />{item.label}
-              </Link>
+              </PendingLink>
             );
           })}
         </div>
