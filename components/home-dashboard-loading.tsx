@@ -16,13 +16,13 @@ export function HomeHeaderSkeleton() {
 export function PrimarySectionSkeleton() {
   return (
     <section className="mt-9 grid gap-5 xl:grid-cols-[1.45fr_0.85fr]" aria-label="Loading your practice summary">
-      <article className="card min-h-[330px] bg-neutral p-7 sm:p-9">
-        <div className="skeleton h-5 w-32 opacity-20" />
-        <div className="skeleton mt-6 h-12 w-4/5 opacity-20" />
-        <div className="skeleton mt-3 h-12 w-2/3 opacity-20" />
+      <article className="card card-border min-h-[330px] bg-base-100 p-7 sm:p-9">
+        <div className="skeleton h-5 w-32" />
+        <div className="skeleton mt-6 h-12 w-4/5" />
+        <div className="skeleton mt-3 h-12 w-2/3" />
         <div className="mt-auto flex items-end justify-between gap-4 pt-10">
-          <div className="skeleton h-3 w-36 opacity-20" />
-          <div className="skeleton h-12 w-40 opacity-20" />
+          <div className="skeleton h-3 w-36" />
+          <div className="skeleton h-12 w-40" />
         </div>
       </article>
       <article className="card card-border bg-base-100 p-6 sm:p-7">
