@@ -2,8 +2,8 @@
 
 ## Highest priority
 
-- [ ] Implement parental controls across the backend and database, including guardian-child relationships, consent and age state, permission policies, audit history, and server-side enforcement. Keep billing ownership and subscription data strictly separate from child profiles and learning data, with guardian-only billing access and authorization.
-- [ ] Implement calendar planning across the frontend, backend, and database, including study-plan scheduling, deadlines, reminders, recurring sessions, time-zone handling, completion state, and authorization for guardian-managed plans.
+- [ ] Implement the `student`, `parent`, and `admin` role system, including parent-student relationships, server-side authorization, separate dashboards, attendance/performance summaries, audit history, and billing ownership separated from subscription beneficiaries. Students may learn and pay independently; no age or guardian requirement is part of the role model.
+- [ ] Implement calendar planning across the frontend, backend, and database, including study-plan scheduling, deadlines, reminders, recurring sessions, time-zone handling, completion state, and authorization for parent-managed plans.
 
 ## High importance
 
@@ -18,3 +18,10 @@
 - [ ] Complete the board-to-AI action lifecycle: make **Check work** and voice requests start an authorized AI run, and make **Stop** cancel the remote run as well as local speech and drawing.
 - [ ] Resolve the landing-page board mock controls: either make **Pen**, **Select**, and **Add annotation** functional or render them as non-interactive presentation elements.
 - [ ] Keep development previews explicit: preview-only **Save changes** must remain clearly labeled as local state, and unavailable actions must not appear operational.
+
+## Product refinements
+
+- [ ] Add a compact preview of the most recently used whiteboard to the **Resume session** card so the card provides useful visual context instead of feeling empty.
+- [ ] Make **Next focus** identify a specific concept the student struggles with, supported by stored practice evidence and an actionable recommendation, rather than generic encouragement to complete more attempts.
+- [ ] Connect the sidebar's **Learning rhythm** card to real planning data, such as progress toward upcoming exams and scheduled study sessions.
+- [ ] Replace **Mathematical thinking studio** with broader product positioning that supports Unsolvable's ambition beyond mathematics, and update related copy consistently across the application.
