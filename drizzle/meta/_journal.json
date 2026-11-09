@@ -15,6 +15,13 @@
       "when": 1794089873810,
       "tag": "0001_loose_mauler",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794176723268,
+      "tag": "0002_freezing_ares",
+      "breakpoints": true
     }
   ]
 }

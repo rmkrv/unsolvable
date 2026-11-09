@@ -76,17 +76,75 @@ export const parentStudentLinks = pgTable(
   ],
 );
 
-export const billingAccounts = pgTable("billing_accounts", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => appUsers.id, { onDelete: "cascade" }),
-  plan: text("plan").notNull().default("free"),
-  status: text("status").notNull().default("active"),
-  providerCustomerId: text("provider_customer_id").unique(),
-  providerSubscriptionId: text("provider_subscription_id").unique(),
-  renewsAt: timestamp("renews_at", { withTimezone: true }),
-  ...timestamps,
-});
+export const billingAccounts = pgTable(
+  "billing_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    providerCustomerId: text("provider_customer_id").unique(),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("billing_accounts_owner_user_uidx").on(table.ownerUserId)],
+);
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    billingAccountId: uuid("billing_account_id")
+      .notNull()
+      .references(() => billingAccounts.id, { onDelete: "cascade" }),
+    providerSubscriptionId: text("provider_subscription_id").unique(),
+    plan: text("plan").notNull().default("free"),
+    status: text("status").notNull().default("active"),
+    renewsAt: timestamp("renews_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("subscriptions_billing_account_uidx").on(table.billingAccountId)],
+);
+
+export const subscriptionEntitlements = pgTable(
+  "subscription_entitlements",
+  {
+    subscriptionId: uuid("subscription_id")
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: "cascade" }),
+    beneficiaryUserId: uuid("beneficiary_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.subscriptionId, table.beneficiaryUserId] }),
+    index("subscription_entitlements_beneficiary_status_idx").on(
+      table.beneficiaryUserId,
+      table.status,
+    ),
+  ],
+);
+
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: uuid("actor_user_id").references(() => appUsers.id, { onDelete: "set null" }),
+    targetUserId: uuid("target_user_id").references(() => appUsers.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    metadata: jsonb("metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("audit_events_created_idx").on(table.createdAt),
+    index("audit_events_actor_created_idx").on(table.actorUserId, table.createdAt),
+    index("audit_events_target_created_idx").on(table.targetUserId, table.createdAt),
+  ],
+);
 
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").primaryKey().defaultRandom(),
