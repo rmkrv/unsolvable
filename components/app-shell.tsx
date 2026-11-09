@@ -32,7 +32,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import type { AuthenticatedUser } from "@/lib/server/auth/current-user";
+import type { Viewer } from "@/lib/server/auth/viewer";
+
+type ShellUser = Pick<Viewer, "displayName" | "email" | "fullName">;
 
 export type AppSection = "home" | "practice" | "weak-spots" | "friends" | "boards" | "settings";
 
@@ -44,7 +46,7 @@ const navigation = [
   { id: "boards" as const, label: "Boards", href: "/boards", icon: LayoutGrid },
 ];
 
-function initials(user: AuthenticatedUser) {
+function initials(user: ShellUser) {
   const source = user.fullName || user.email;
   return source
     .split(/[\s@._-]+/)
@@ -54,13 +56,13 @@ function initials(user: AuthenticatedUser) {
     .join("") || "U";
 }
 
-export function AppShell({
+export function StudentShell({
   user,
   active,
   title,
   children,
 }: {
-  user: AuthenticatedUser;
+  user: ShellUser;
   active: AppSection;
   title: string;
   children: React.ReactNode;
@@ -125,6 +127,8 @@ export function AppShell({
     </div>
   );
 }
+
+export const AppShell = StudentShell;
 
 function SidebarContent({ active }: { active: AppSection }) {
   return (

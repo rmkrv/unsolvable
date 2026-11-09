@@ -30,7 +30,10 @@ export function AuthForm({
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const destination = safeReturnPath(redirectTo);
+  const requestedDestination = safeReturnPath(redirectTo);
+  const destination = requestedDestination.startsWith("/app")
+    ? requestedDestination
+    : `/app?returnTo=${encodeURIComponent(requestedDestination)}`;
   const isSignUp = mode === "sign-up";
 
   useEffect(() => {
@@ -118,7 +121,7 @@ export function AuthForm({
         {pending ? "Please wait…" : isSignUp ? "Create account" : "Sign in"}
       </button>
       {!isSignUp && !oauthVisit && <Link href={`/auth/forgot-password?email=${encodeURIComponent("")}`}>Forgot your password?</Link>}
-      {!oauthVisit && <Link href={`${alternatePath}?redirectTo=${encodeURIComponent(destination)}`}>{alternateLabel}</Link>}
+      {!oauthVisit && <Link href={`${alternatePath}?redirectTo=${encodeURIComponent(requestedDestination)}`}>{alternateLabel}</Link>}
     </form>
   );
 }

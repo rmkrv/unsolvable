@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { safeReturnPath } from "@/lib/auth/return-path";
 import { auth } from "@/lib/server/auth/neon";
 
@@ -21,14 +20,6 @@ export async function getCurrentAuthIdentity(): Promise<AuthIdentity | null> {
     email: user.email,
     fullName,
   };
-}
-
-export const getCurrentUser = getCurrentAuthIdentity;
-
-export async function requireCurrentUser(returnTo: string): Promise<AuthIdentity> {
-  const user = await getCurrentAuthIdentity();
-  if (user) return user;
-  redirect(signInPath(returnTo));
 }
 
 export function signInPath(returnTo: string): string {

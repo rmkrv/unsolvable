@@ -15,13 +15,13 @@ export function NewBoardButton({ className, href }: { className?: string; href?:
     setCreating(true);
     setError("");
     try {
-      const response = await fetch("/api/boards", {
+      const response = await fetch("/api/student/boards", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({}),
       });
-      const payload = await response.json() as { board?: { boardId: string }; error?: string };
-      if (!response.ok || !payload.board) throw new Error(payload.error || "Could not create a board.");
+      const payload = await response.json() as { board?: { boardId: string }; error?: { message?: string } };
+      if (!response.ok || !payload.board) throw new Error(payload.error?.message || "Could not create a board.");
       router.push(`/boards/${encodeURIComponent(payload.board.boardId)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create a board.");

@@ -6,7 +6,6 @@ export default function HomeDesignPreviewPage() {
   return (
     <HomeDashboard
       user={{
-        userId: "design-preview",
         displayName: "Maya Kim",
         fullName: "Maya Kim",
         email: "maya@example.test",

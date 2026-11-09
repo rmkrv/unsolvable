@@ -25,8 +25,8 @@ export default function StartPage() {
           </ul>
         </nav>
         <div className="navbar-end gap-2">
-          <Link className="btn btn-ghost btn-sm" href="/auth/sign-in?redirectTo=/home">Sign in</Link>
-          <Link className="btn btn-neutral btn-sm hidden sm:inline-flex" href="/auth/sign-up?redirectTo=/home">Create account</Link>
+          <Link className="btn btn-ghost btn-sm" href="/auth/sign-in?redirectTo=/app">Sign in</Link>
+          <Link className="btn btn-neutral btn-sm hidden sm:inline-flex" href="/auth/sign-up?redirectTo=/app">Create account</Link>
         </div>
       </header>
 
@@ -44,7 +44,7 @@ export default function StartPage() {
               Think on an open whiteboard. Get precise help at the step that broke down. Build understanding you can use on the next problem.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link className="btn btn-neutral btn-lg" href="/auth/sign-up?redirectTo=/home">
+              <Link className="btn btn-neutral btn-lg" href="/auth/sign-up?redirectTo=/app">
                 Start practicing <ArrowRight size={18} />
               </Link>
               <a className="btn btn-ghost btn-lg" href="#practice">See how it works</a>
@@ -144,7 +144,7 @@ export default function StartPage() {
           <BadgeCheck className="mx-auto text-primary" size={30} />
           <h2 className="mt-5 text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">Serious help for difficult material.</h2>
           <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-base-content/60">Built for the stretch from upper-secondary mathematics into the first demanding university courses—and clear enough to meet a younger learner where they are.</p>
-          <Link className="btn mt-8" href="/auth/sign-up?redirectTo=/home">Create your workspace <ArrowRight size={17} /></Link>
+          <Link className="btn mt-8" href="/auth/sign-up?redirectTo=/app">Create your workspace <ArrowRight size={17} /></Link>
         </div>
       </section>
 
