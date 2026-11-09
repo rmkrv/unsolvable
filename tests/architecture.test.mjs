@@ -32,5 +32,6 @@ test("the board component delegates board HTTP transport to the client adapter",
   const source = readFileSync(join(process.cwd(), "components", "tutor-board.tsx"), "utf8");
   assert.equal(/\bfetch\s*\(/.test(source), false);
   assert.match(source, /createHttpBoardGateway/);
-  assert.doesNotMatch(source, /VITE_TUTOR_BRIDGE_URL|createTutorTransport/);
+  assert.match(source, /createTutorTransport/);
+  assert.doesNotMatch(source, /node:child_process|spawn\(/);
 });

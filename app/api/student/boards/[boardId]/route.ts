@@ -6,10 +6,11 @@ import { readTutorBoard, saveTutorBoard } from "@/lib/server/boards/board-servic
 import { ResourceNotFound, Conflict } from "@/lib/server/auth/authorization-errors";
 import { errorResponse } from "@/lib/server/http/api-errors";
 import { routeError } from "@/lib/server/http/route-utils";
+import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
 
 const updateBoardSchema = z.object({
   state: z.record(z.string(), z.unknown()),
-  snapshotDataUrl: z.string().startsWith("data:image/png;base64,").max(750_000).nullable().optional(),
+  snapshotDataUrl: z.string().startsWith("data:image/png;base64,").max(MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH).nullable().optional(),
   title: z.string().trim().min(1).max(120).optional(),
   expectedVersion: z.number().int().nonnegative(),
 }).strict();

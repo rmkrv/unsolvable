@@ -5,6 +5,7 @@ import type { BoardCommand, StrokeDraft } from "@/lib/domain/board/commands";
 import { makeId, strokeBounds, type BoardDocument, type Stroke } from "@/lib/domain/board/model";
 import { aggregateStrokeBounds } from "@/lib/domain/board/operations";
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
+import { boardToolAnnotations } from "@/lib/domain/tutor/mcp-tool-policy";
 import { getMcpOAuth } from "@/lib/server/auth/mcp-oauth";
 import { resolveViewerForAuthSubject } from "@/lib/server/auth/viewer-service";
 import { applyTutorBoardCommands, enqueueTutorAction, markMcpConnected, readTutorBoard } from "@/lib/server/boards/board-service";
@@ -33,8 +34,13 @@ const OBSERVE_TOOL = {
 };
 
 const TOOLS = [
-  OBSERVE_TOOL,
-  ...dynamicTools.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })),
+  { ...OBSERVE_TOOL, annotations: boardToolAnnotations(OBSERVE_TOOL.name) },
+  ...dynamicTools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    annotations: boardToolAnnotations(tool.name),
+  })),
 ];
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];

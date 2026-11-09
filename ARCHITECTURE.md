@@ -51,6 +51,7 @@ Compatibility facades such as `lib/board-model.ts`, `lib/tutor-store.ts`, and `l
 
 ```text
 TutorBoard
+  -> BoardSaveCoordinator
   -> BoardGateway
   -> /api/student/boards/[boardId]
   -> role-aware Viewer
@@ -63,6 +64,10 @@ TutorBoard
 The request boundary resolves the Neon Auth subject to one role-aware application `Viewer`. Domain services and repositories receive only the internal application user ID. Personal workspaces are provisioned idempotently on first save. Workspace and board memberships provide authorization independently from authentication.
 
 Canonical board pages use `/boards/[boardId]`. Browser reads include that explicit board ID, and successful opens upsert `user_board_activity`, so Home recents are per-user rather than reordered by a collaborator's edit. `/boards/current` is only a convenience redirect to the most recently opened authorized board, creating one when the workspace is empty.
+
+`BoardSaveCoordinator` is the client-side concurrency boundary for the current full-document persistence protocol. It does not accept writes until the initial board version is loaded, permits only one write in flight, coalesces queued routine autosaves, preserves explicit snapshot/title/request saves, and pauses on `409` until polling rebases it onto the authoritative version. Routine autosaves persist structured board state without rendering a PNG; explicit AI requests and title changes may attach a bounded snapshot.
+
+Full-document saves are a transitional transport, not the target collaboration model. New synchronization behavior belongs behind the coordinator and gateway boundaries so browser edits can move incrementally to idempotent domain commands with command IDs, server ordering, and replay without coupling that migration to React or Canvas rendering.
 
 ## Account and learning data
 
@@ -85,6 +90,8 @@ Billing is split into `billing_accounts` (owner), `subscriptions` (provider plan
 Provider-dependent operations remain explicit boundaries: avatar bytes need object storage, billing management needs a selected payment provider, recovery email needs a verified auth factor, and account deletion needs a retention/cancellation policy. The UI does not simulate these operations while those decisions are open.
 
 ## Tutor flow
+
+For local development, `npm run dev:tutor` starts a loopback-only Codex runner and the site. The browser saves its board before dispatching a turn through `lib/client/tutor/tutor-transport.ts`. The runner uses the configured `unsolvable` OAuth MCP connection and passes the explicit board ID; MCP continues to enforce student role and board membership. The runner is not included in the deployed Worker. Ordinary `npm run dev` retains the external-MCP-client workflow. Local readiness reflects runner availability rather than the last MCP access timestamp.
 
 Board actions are provider-independent commands. The MCP integration validates an action, compiles visual actions into board commands, and persists them with the same event-version rules used by browser edits. The browser observes the new version and renders it. The action queue remains only for transient effects such as speech.
 

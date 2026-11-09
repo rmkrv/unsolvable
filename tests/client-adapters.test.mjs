@@ -39,11 +39,32 @@ test("HTTP board gateway owns board route serialization", async () => {
     viewport: { x: 0, y: 0, zoom: 1 },
     hintLevel: 2,
   };
-  assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA==", 3, "Renamed board"), { eventVersion: 4, updatedAt: 123 });
+  assert.deepEqual(await gateway.save({
+    document,
+    snapshotDataUrl: "data:image/png;base64,AA==",
+    expectedVersion: 0,
+    title: "Renamed board",
+  }), { eventVersion: 4, updatedAt: 123 });
   const body = JSON.parse(requests[2].init.body);
   assert.equal(requests[2].input, "/api/student/boards/board-1");
   assert.equal("boardId" in body, false);
   assert.deepEqual(body.state, document);
-  assert.equal(body.expectedVersion, 3);
+  assert.equal(body.expectedVersion, 0);
   assert.equal(body.title, "Renamed board");
+});
+
+test("HTTP board gateway preserves API status and error code", async () => {
+  const { BoardGatewayError, createHttpBoardGateway } = await importTypeScript("lib/client/board/board-gateway.ts");
+  const gateway = createHttpBoardGateway(async () => Response.json(
+    { error: { code: "version_conflict", message: "Board changed elsewhere." } },
+    { status: 409 },
+  ));
+
+  await assert.rejects(
+    gateway.save({
+      document: { boardId: "board-1", pages: [], activePageId: "page-1", viewport: { x: 0, y: 0, zoom: 1 }, hintLevel: 2 },
+      expectedVersion: 2,
+    }),
+    (error) => error instanceof BoardGatewayError && error.status === 409 && error.code === "version_conflict",
+  );
 });

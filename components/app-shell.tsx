@@ -92,14 +92,14 @@ export function StudentShell({
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" aria-label="Notifications are not available yet" title="Notifications are not available yet" disabled><Bell /></Button>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+              <DropdownMenuTrigger asChild id="student-account-menu-trigger">
                 <Button variant="ghost" className="h-10 gap-2 px-2 sm:px-3">
                   <Avatar><AvatarFallback className="bg-foreground text-background">{initials(user)}</AvatarFallback></Avatar>
                   <span className="hidden max-w-36 truncate sm:block">{user.displayName}</span>
                   <ChevronDown className="hidden text-muted-foreground sm:block" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuContent align="end" className="w-60" aria-labelledby="student-account-menu-trigger">
                 <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{user.email}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link href="/settings/profile"><Settings />Settings</Link></DropdownMenuItem>

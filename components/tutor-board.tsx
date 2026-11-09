@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createTutorTransport } from "@/lib/client/tutor/tutor-transport";
 import {
   ArrowUpRight,
   Cable,
@@ -47,7 +48,9 @@ import {
 } from "@/lib/domain/board/operations";
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
+import { BoardSaveCoordinator, type BoardSaveKind } from "@/lib/client/board/board-save-coordinator";
 import { renderBoardCanvas } from "@/lib/client/board/canvas-renderer";
+import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
 import {
   readActionCursor,
   readBoardColor,
@@ -99,6 +102,10 @@ type SpeechRecognitionWindow = Window & {
 const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
 const boardGateway = createHttpBoardGateway();
+
+const tutorBridgeUrl = import.meta.env.VITE_TUTOR_BRIDGE_URL;
+const tutorTransport = createTutorTransport(tutorBridgeUrl);
+const localTutor = tutorTransport.mode === "local";
 
 function agentAvailable(state: BridgeState) {
   return state === "authorized";
@@ -208,6 +215,9 @@ export default function TutorBoard({
   const lastActionIdRef = useRef(0);
   const hasActionCursorRef = useRef(false);
   const serverVersionRef = useRef(0);
+  const hintLevelRef = useRef(hintLevel);
+  const hydrationCompleteRef = useRef(false);
+  const saveCoordinatorRef = useRef<BoardSaveCoordinator | null>(null);
   const applyingRemoteStateRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
   const previousToolRef = useRef<Tool | null>(null);
@@ -234,6 +244,13 @@ export default function TutorBoard({
   useEffect(() => {
     activePageIdRef.current = activePageId;
   }, [activePageId]);
+  useEffect(() => {
+    hintLevelRef.current = hintLevel;
+  }, [hintLevel]);
+
+  if (saveCoordinatorRef.current == null) {
+    saveCoordinatorRef.current = new BoardSaveCoordinator(boardGateway);
+  }
 
   useEffect(() => {
     if (!isRenamingTitle) return;
@@ -790,32 +807,43 @@ export default function TutorBoard({
   );
 
   const syncBoard = useCallback(
-    async (captureSnapshot = false, title?: string) => {
-      if (!sessionId) return null;
+    async ({
+      captureSnapshot = false,
+      title,
+      kind = "autosave",
+    }: { captureSnapshot?: boolean; title?: string; kind?: BoardSaveKind } = {}) => {
+      if (!sessionId || !hydrationCompleteRef.current) return null;
       const canvas = canvasRef.current;
       const rect = canvas?.getBoundingClientRect();
-      const snapshotDataUrl = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
-      const result = await boardGateway.save({
-        boardId: sessionId,
-        pages: pagesRef.current,
-        activePageId: activePageIdRef.current,
-        viewport: viewRef.current,
-        snapshot: canvas && rect
-          ? {
-              width: canvas.width,
-              height: canvas.height,
-              cssWidth: rect.width,
-              cssHeight: rect.height,
-              pixelRatio: rect.width > 0 ? canvas.width / rect.width : 1,
-            }
-          : undefined,
-        hintLevel,
-        request: requestRef.current,
-      }, snapshotDataUrl, serverVersionRef.current || undefined, title);
+      const capturedSnapshot = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
+      const snapshotDataUrl = capturedSnapshot && capturedSnapshot.length <= MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH
+        ? capturedSnapshot
+        : undefined;
+      const result = await saveCoordinatorRef.current!.enqueue({
+        document: {
+          boardId: sessionId,
+          pages: pagesRef.current,
+          activePageId: activePageIdRef.current,
+          viewport: viewRef.current,
+          snapshot: canvas && rect
+            ? {
+                width: canvas.width,
+                height: canvas.height,
+                cssWidth: rect.width,
+                cssHeight: rect.height,
+                pixelRatio: rect.width > 0 ? canvas.width / rect.width : 1,
+              }
+            : undefined,
+          hintLevel: hintLevelRef.current,
+          request: requestRef.current,
+        },
+        snapshotDataUrl,
+        title,
+      }, kind);
       serverVersionRef.current = result.eventVersion;
       return result;
     },
-    [hintLevel, sessionId],
+    [sessionId],
   );
 
   useEffect(() => {
@@ -824,24 +852,29 @@ export default function TutorBoard({
     let timer: ReturnType<typeof setInterval> | null = null;
 
     async function readSharedBoard(boardId: string, restore: boolean) {
-      if (polling) return;
+      if (polling) return serverVersionRef.current;
       polling = true;
       try {
         const payload = await boardGateway.read(boardId, lastActionIdRef.current);
-        if (disposed) return;
+        if (disposed) return serverVersionRef.current;
         const remoteVersion = payload.board?.eventVersion ?? 0;
         const remoteChanged = remoteVersion > serverVersionRef.current;
-        if ((restore || remoteChanged) && payload.board?.state?.pages?.length) {
+        const coordinatorBusy = saveCoordinatorRef.current?.getPhase() === "saving";
+        const shouldApplyRemote = restore || (remoteChanged && !coordinatorBusy);
+        if (shouldApplyRemote && payload.board?.state?.pages?.length) {
           applyingRemoteStateRef.current = true;
           setPages(payload.board.state.pages);
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
         }
-        if ((restore || remoteChanged) && payload.board?.title) {
+        if (shouldApplyRemote && payload.board?.title) {
           setBoardTitle(payload.board.title);
           setTitleDraft(payload.board.title);
         }
-        serverVersionRef.current = Math.max(serverVersionRef.current, remoteVersion);
+        if (shouldApplyRemote) {
+          serverVersionRef.current = Math.max(serverVersionRef.current, remoteVersion);
+          if (hydrationCompleteRef.current) saveCoordinatorRef.current?.rebase(remoteVersion);
+        }
         if (restore && !hasActionCursorRef.current && payload.board) {
           // Existing boards predate the stored cursor. Treat their queued actions
           // as historical so a refresh cannot replay old drawing or speech.
@@ -850,7 +883,8 @@ export default function TutorBoard({
           hasActionCursorRef.current = true;
         }
         const recentlyUsed = Date.now() - Number(payload.board?.lastMcpAt || 0) < 120_000;
-        setBridgeState((current) => current === "drawing" ? current : recentlyUsed ? "authorized" : "offline");
+        const localStatus = localTutor ? await tutorTransport.status() : null;
+        setBridgeState((current) => current === "drawing" || current === "thinking" ? current : (localStatus?.ready ?? recentlyUsed) ? "authorized" : "offline");
         const processActions = async () => {
           const sharedCursor = readActionCursor(localStorage, boardId);
           if (sharedCursor !== null) {
@@ -868,6 +902,7 @@ export default function TutorBoard({
             if (lock) await processActions();
           });
         } else await processActions();
+        return remoteVersion;
       } finally {
         polling = false;
       }
@@ -875,13 +910,18 @@ export default function TutorBoard({
 
     async function connect() {
       setBridgeState("connecting");
+      hydrationCompleteRef.current = false;
+      saveCoordinatorRef.current?.stop();
       setSessionId(boardId);
       const storedCursor = readActionCursor(localStorage, boardId);
       hasActionCursorRef.current = storedCursor !== null;
       lastActionIdRef.current = storedCursor ?? 0;
       try {
-        await readSharedBoard(boardId, true);
+        const initialVersion = await readSharedBoard(boardId, true);
         if (!disposed) {
+          serverVersionRef.current = initialVersion;
+          saveCoordinatorRef.current?.start(initialVersion);
+          hydrationCompleteRef.current = true;
           setBridgeState((current) => (current === "authorized" ? current : "offline"));
           timer = setInterval(() => {
             readSharedBoard(boardId!, false).catch(() => undefined);
@@ -897,23 +937,20 @@ export default function TutorBoard({
     connect();
     return () => {
       disposed = true;
+      hydrationCompleteRef.current = false;
+      saveCoordinatorRef.current?.stop();
       if (timer) clearInterval(timer);
     };
   }, [boardId, handleAction]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !hydrationCompleteRef.current) return;
     if (applyingRemoteStateRef.current) {
       applyingRemoteStateRef.current = false;
-      const timer = setTimeout(() => {
-        syncBoard(true).catch((error) => {
-          setToast(error instanceof Error ? error.message : "Could not refresh the shared board snapshot.");
-        });
-      }, 100);
-      return () => clearTimeout(timer);
+      return;
     }
     const timer = setTimeout(() => {
-      syncBoard(true).catch((error) => {
+      syncBoard().catch((error) => {
         setToast(error instanceof Error ? error.message : "Could not sync the shared board.");
       });
     }, 700);
@@ -921,6 +958,7 @@ export default function TutorBoard({
   }, [activePageId, hintLevel, pages, sessionId, syncBoard]);
 
   const interrupt = useCallback(async () => {
+    if (localTutor && sessionId) await tutorTransport.interrupt(sessionId);
     animationRef.current?.abort();
     speechRef.current?.stop();
     setBridgeState((current) => current === "offline" ? "offline" : sessionId ? "authorized" : "offline");
@@ -935,9 +973,16 @@ export default function TutorBoard({
       }
       if (bridgeState === "thinking" || bridgeState === "drawing") await interrupt();
       requestRef.current = { message: message.slice(0, 800), trigger, at: Date.now() };
-      setToast("Request shared. Continue in your connected AI chat to let Unsolvable respond.");
+      setToast(localTutor ? "Starting Codex…" : "Request shared. Continue in your connected AI chat to let Unsolvable respond.");
       try {
-        await syncBoard(true);
+        await syncBoard({ captureSnapshot: true, kind: "explicit" });
+        if (localTutor) {
+          setBridgeState("thinking");
+          const result = await tutorTransport.sendTurn({ boardId: sessionId, message, trigger });
+          setToast(result.reply || "Codex finished.");
+          setBridgeState("authorized");
+          return;
+        }
         if (bridgeState === "offline") setConnectionOpen(true);
       } catch (error) {
         setBridgeState("offline");
@@ -1259,7 +1304,7 @@ export default function TutorBoard({
     }
     setIsSavingTitle(true);
     try {
-      const result = await syncBoard(true, nextTitle);
+      const result = await syncBoard({ captureSnapshot: true, title: nextTitle, kind: "explicit" });
       if (!result) throw new Error("The shared board is still initializing.");
       setBoardTitle(nextTitle);
       setTitleDraft(nextTitle);
@@ -1275,7 +1320,7 @@ export default function TutorBoard({
 
   const statusLabel = {
     connecting: "Preparing board",
-    authorized: "AI recently active",
+    authorized: localTutor ? "Codex ready" : "AI recently active",
     offline: "Connect AI",
     thinking: "AI active",
     drawing: "AI drawing",
@@ -1427,7 +1472,7 @@ export default function TutorBoard({
               ))}
             </div>
             <div className="connection-note">
-              <strong>{bridgeState === "authorized" ? "An AI assistant accessed this board recently" : "No recent remote AI activity"}</strong>
+              <strong>{localTutor ? "Local Codex runner enabled" : bridgeState === "authorized" ? "An AI assistant accessed this board recently" : "No recent remote AI activity"}</strong>
               <span>The MCP client opens Unsolvable sign-in and consent for {displayName}; no model-provider key is stored here.</span>
             </div>
             <button className="connection-done" type="button" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/mcp`).then(() => setToast("MCP server address copied.")).catch(() => undefined); }}>Copy MCP server address</button>
