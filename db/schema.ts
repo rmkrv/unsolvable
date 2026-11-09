@@ -1,8 +1,10 @@
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   primaryKey,
   serial,
@@ -11,15 +13,25 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
 
+export const accountRole = pgEnum("account_role", ["student", "parent", "admin"]);
+export const parentStudentLinkStatus = pgEnum("parent_student_link_status", [
+  "pending",
+  "active",
+  "revoked",
+]);
+
 export const appUsers = pgTable("app_users", {
   id: uuid("id").primaryKey().defaultRandom(),
   authSubject: text("auth_subject").notNull().unique(),
+  role: accountRole("role").notNull().default("student"),
+  roleConfirmedAt: timestamp("role_confirmed_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -36,6 +48,33 @@ export const userProfiles = pgTable("user_profiles", {
   onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
   ...timestamps,
 });
+
+export const parentStudentLinks = pgTable(
+  "parent_student_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentUserId: uuid("parent_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    status: parentStudentLinkStatus("status").notNull().default("pending"),
+    invitedByUserId: uuid("invited_by_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("parent_student_links_pair_uidx").on(table.parentUserId, table.studentUserId),
+    index("parent_student_links_parent_status_idx").on(table.parentUserId, table.status),
+    index("parent_student_links_student_status_idx").on(table.studentUserId, table.status),
+    check("parent_student_links_distinct_users_check", sql`${table.parentUserId} <> ${table.studentUserId}`),
+  ],
+);
 
 export const billingAccounts = pgTable("billing_accounts", {
   userId: uuid("user_id")
