@@ -2,14 +2,14 @@ import { redirect } from "next/navigation";
 import { safeReturnPath } from "@/lib/auth/return-path";
 import { auth } from "@/lib/server/auth/neon";
 
-export type AuthenticatedUser = {
+export type AuthIdentity = {
   userId: string;
   displayName: string;
   email: string;
   fullName: string | null;
 };
 
-export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
+export async function getCurrentAuthIdentity(): Promise<AuthIdentity | null> {
   const { data: session } = await auth.getSession();
   const user = session?.user;
   if (!user?.id || !user.email) return null;
@@ -23,8 +23,10 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
   };
 }
 
-export async function requireCurrentUser(returnTo: string): Promise<AuthenticatedUser> {
-  const user = await getCurrentUser();
+export const getCurrentUser = getCurrentAuthIdentity;
+
+export async function requireCurrentUser(returnTo: string): Promise<AuthIdentity> {
+  const user = await getCurrentAuthIdentity();
   if (user) return user;
   redirect(signInPath(returnTo));
 }
