@@ -23,6 +23,7 @@ export async function GET(_request: Request, context: { params: Promise<{ boardI
     return NextResponse.json({
       board: {
         boardId: board.boardId,
+        title: board.title,
         state: JSON.parse(board.stateJson),
         eventVersion: board.eventVersion,
         lastMcpAt: board.lastMcpAt,

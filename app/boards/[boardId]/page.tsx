@@ -13,5 +13,5 @@ export default async function BoardPage({ params }: { params: Promise<{ boardId:
     markBoardOpened(user, boardId),
   ]);
   if (!board) notFound();
-  return <TutorBoard displayName={user.displayName} boardId={boardId} />;
+  return <TutorBoard displayName={user.displayName} boardId={boardId} initialTitle={board.title} />;
 }

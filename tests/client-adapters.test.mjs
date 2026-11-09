@@ -39,10 +39,11 @@ test("HTTP board gateway owns board route serialization", async () => {
     viewport: { x: 0, y: 0, zoom: 1 },
     hintLevel: 2,
   };
-  assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA==", 3), { eventVersion: 4, updatedAt: 123 });
+  assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA==", 3, "Renamed board"), { eventVersion: 4, updatedAt: 123 });
   const body = JSON.parse(requests[2].init.body);
   assert.equal(requests[2].input, "/api/student/boards/board-1");
   assert.equal("boardId" in body, false);
   assert.deepEqual(body.state, document);
   assert.equal(body.expectedVersion, 3);
+  assert.equal(body.title, "Renamed board");
 });

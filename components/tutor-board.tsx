@@ -154,9 +154,18 @@ function worldPoint(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCa
   };
 }
 
-export default function TutorBoard({ displayName, boardId }: { displayName: string; boardId: string }) {
+export default function TutorBoard({
+  displayName,
+  boardId,
+  initialTitle,
+}: {
+  displayName: string;
+  boardId: string;
+  initialTitle: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [pages, setPages] = useState<Page[]>([INITIAL_PAGE]);
   const [activePageId, setActivePageId] = useState("page-1");
   const [view, setView] = useState<Viewport>({ x: 86, y: 70, zoom: 1 });
@@ -173,6 +182,10 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   const [isListening, setIsListening] = useState(false);
   const [toast, setToast] = useState("Draw naturally — Unsolvable will wait for a complete thought.");
   const [pagesOpen, setPagesOpen] = useState(false);
+  const [boardTitle, setBoardTitle] = useState(initialTitle);
+  const [titleDraft, setTitleDraft] = useState(initialTitle);
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const undoRef = useRef<Page[][]>([]);
   const redoRef = useRef<Page[][]>([]);
   const pagesRef = useRef(pages);
@@ -221,6 +234,12 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   useEffect(() => {
     activePageIdRef.current = activePageId;
   }, [activePageId]);
+
+  useEffect(() => {
+    if (!isRenamingTitle) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isRenamingTitle]);
 
   useEffect(() => {
     const saved = readBoardColor(localStorage);
@@ -771,7 +790,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   );
 
   const syncBoard = useCallback(
-    async (captureSnapshot = false) => {
+    async (captureSnapshot = false, title?: string) => {
       if (!sessionId) return null;
       const canvas = canvasRef.current;
       const rect = canvas?.getBoundingClientRect();
@@ -792,7 +811,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
           : undefined,
         hintLevel,
         request: requestRef.current,
-      }, snapshotDataUrl, serverVersionRef.current || undefined);
+      }, snapshotDataUrl, serverVersionRef.current || undefined, title);
       serverVersionRef.current = result.eventVersion;
       return result;
     },
@@ -817,6 +836,10 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
           setPages(payload.board.state.pages);
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
+        }
+        if ((restore || remoteChanged) && payload.board?.title) {
+          setBoardTitle(payload.board.title);
+          setTitleDraft(payload.board.title);
         }
         serverVersionRef.current = Math.max(serverVersionRef.current, remoteVersion);
         if (restore && !hasActionCursorRef.current && payload.board) {
@@ -1213,6 +1236,43 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
     recognition.start();
   };
 
+  const beginTitleRename = () => {
+    setTitleDraft(boardTitle);
+    setIsRenamingTitle(true);
+  };
+
+  const cancelTitleRename = () => {
+    setTitleDraft(boardTitle);
+    setIsRenamingTitle(false);
+  };
+
+  const saveBoardTitle = async () => {
+    const nextTitle = titleDraft.trim();
+    if (!nextTitle) {
+      setToast("Board name cannot be empty.");
+      titleInputRef.current?.focus();
+      return;
+    }
+    if (nextTitle === boardTitle) {
+      setIsRenamingTitle(false);
+      return;
+    }
+    setIsSavingTitle(true);
+    try {
+      const result = await syncBoard(true, nextTitle);
+      if (!result) throw new Error("The shared board is still initializing.");
+      setBoardTitle(nextTitle);
+      setTitleDraft(nextTitle);
+      setIsRenamingTitle(false);
+      setToast(`Board renamed to “${nextTitle}”.`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Could not rename the board.");
+      titleInputRef.current?.focus();
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   const statusLabel = {
     connecting: "Preparing board",
     authorized: "AI recently active",
@@ -1235,11 +1295,36 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
           <div><div className="brand-name">unsolvable</div><div className="brand-subtitle">Mathematical tutor</div></div>
         </Link>
 
-        <button className="problem-title" type="button" onClick={() => setPagesOpen((open) => !open)}>
-          <span className="problem-kicker">Open board</span>
-          <span>Untitled engineering problem</span>
-          <ChevronDown size={15} />
-        </button>
+        {isRenamingTitle ? (
+          <form className="problem-title-editor" onSubmit={(event) => { event.preventDefault(); void saveBoardTitle(); }}>
+            <span className="problem-kicker">Board name</span>
+            <input
+              ref={titleInputRef}
+              className="input input-sm board-title-input"
+              value={titleDraft}
+              maxLength={120}
+              disabled={isSavingTitle}
+              aria-label="Board name"
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelTitleRename();
+                }
+              }}
+            />
+            <div className="problem-title-actions">
+              <button className="btn btn-ghost btn-sm btn-square" type="submit" disabled={isSavingTitle} aria-label="Save board name"><Check size={15} /></button>
+              <button className="btn btn-ghost btn-sm btn-square" type="button" disabled={isSavingTitle} aria-label="Cancel renaming" onClick={cancelTitleRename}><X size={15} /></button>
+            </div>
+          </form>
+        ) : (
+          <button className="problem-title btn btn-ghost" type="button" onClick={beginTitleRename} aria-label={`Rename board: ${boardTitle}`}>
+            <span className="problem-kicker">Board name</span>
+            <span className="board-title-text">{boardTitle}</span>
+            <PenLine size={14} />
+          </button>
+        )}
 
         <div className="top-actions">
           <label className="observe-toggle">

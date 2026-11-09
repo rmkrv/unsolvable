@@ -43,6 +43,7 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
 
     const stored = await repository.readForUser(userId);
     assert.equal(stored?.boardId, boardId);
+    assert.equal(stored?.title, "Integration board");
     assert.equal(stored?.eventVersion, 2);
     assert.equal(stored?.snapshotDataUrl, null, "ordinary reads should not transfer the PNG snapshot");
     assert.deepEqual(JSON.parse(stored?.stateJson ?? "{}").pages, [{ id: "page-1" }]);
@@ -62,8 +63,10 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
       expectedVersion: 2,
       stateJson: JSON.stringify({ boardId, pages: [{ id: "page-2" }] }),
       snapshotDataUrl: null,
+      title: "Renamed board",
     });
     assert.equal(third?.eventVersion, 3);
+    assert.equal((await repository.readForUser(userId, boardId))?.title, "Renamed board");
     assert.equal(await repository.updateForUser({
       userId,
       boardId,

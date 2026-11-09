@@ -136,10 +136,21 @@ button, input { font: inherit; }
   font-weight: 580;
   padding: 6px 10px;
   border-radius: 9px;
+  min-height: 0;
+  height: auto;
+  min-width: 0;
+  max-width: min(42vw, 420px);
+  text-transform: none;
 }
 .problem-title:hover { background: #eceae4; }
 .problem-title svg { grid-column: 2; grid-row: 2; color: #8d919a; margin-left: auto; }
 .problem-kicker { grid-column: 1 / span 2; color: #969a9f; font-size: 9px; text-transform: uppercase; letter-spacing: .12em; font-weight: 700; text-align: left; }
+.board-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.problem-title-editor { display: grid; grid-template-columns: minmax(180px, 360px) auto; align-items: center; column-gap: 4px; min-width: 0; }
+.problem-title-editor .problem-kicker { padding-left: 9px; }
+.board-title-input { grid-column: 1; width: 100%; height: 32px; min-width: 0; font-size: 13px; }
+.problem-title-actions { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: center; gap: 2px; }
+.problem-title-actions .btn { width: 30px; height: 30px; min-height: 30px; }
 .top-actions { justify-self: end; display: flex; align-items: center; gap: 18px; }
 .observe-toggle { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #656b78; cursor: pointer; user-select: none; }
 .observe-toggle input { position: absolute; opacity: 0; pointer-events: none; }
@@ -257,9 +268,15 @@ button, input { font: inherit; }
 .auth-success { padding: 10px 12px; border: 1px solid color-mix(in oklab, var(--color-success) 35%, transparent); border-radius: 10px; background: color-mix(in oklab, var(--color-success) 9%, white); color: color-mix(in oklab, var(--color-success) 75%, black); font-size: 11px; line-height: 1.4; }
 
 @media (max-width: 760px) {
-  .topbar { grid-template-columns: 1fr auto; padding: 0 13px; }
-  .problem-title, .observe-toggle { display: none; }
-  .brand-subtitle { display: none; }
+  .topbar { grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; padding: 0 8px; }
+  .brand-block > div, .observe-toggle, .agent-status span { display: none; }
+  .brand-mark { width: 34px; height: 34px; }
+  .problem-title { width: 100%; max-width: none; }
+  .problem-title-editor { grid-template-columns: minmax(0, 1fr) auto; }
+  .problem-title-actions .btn { width: 27px; }
+  .top-actions { gap: 0; }
+  .agent-status { width: 34px; padding: 0; justify-content: center; }
+  .agent-status i { display: none; }
   .workspace { grid-template-columns: 50px minmax(0, 1fr); }
   .tool-rail { padding-top: 9px; }
   .tool-button { width: 34px; height: 34px; }

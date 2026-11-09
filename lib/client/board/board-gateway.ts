@@ -4,6 +4,7 @@ import type { BoardAction } from "@/lib/domain/tutor/board-action";
 export type SharedBoardResponse = {
   board: {
     boardId: string;
+    title: string;
     state?: Partial<BoardDocument> & { pages?: Page[] };
     eventVersion: number;
     lastMcpAt: number | null;
@@ -14,7 +15,12 @@ export type SharedBoardResponse = {
 
 export interface BoardGateway {
   read(boardId: string, after: number): Promise<SharedBoardResponse>;
-  save(document: BoardDocument, snapshotDataUrl?: string, expectedVersion?: number): Promise<{ eventVersion: number; updatedAt: number }>;
+  save(
+    document: BoardDocument,
+    snapshotDataUrl?: string,
+    expectedVersion?: number,
+    title?: string,
+  ): Promise<{ eventVersion: number; updatedAt: number }>;
 }
 
 async function jsonOrError<T>(response: Response, fallback: string): Promise<T> {
@@ -34,11 +40,11 @@ export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGate
       const actionsPayload = await jsonOrError<{ actions: SharedBoardResponse["actions"] }>(actionsResponse, "Board actions unavailable");
       return { board: boardPayload.board, actions: actionsPayload.actions };
     },
-    async save(document, snapshotDataUrl, expectedVersion) {
+    async save(document, snapshotDataUrl, expectedVersion, title) {
       const response = await fetcher(`/api/student/boards/${encodeURIComponent(document.boardId)}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ state: document, snapshotDataUrl: snapshotDataUrl ?? null, expectedVersion }),
+        body: JSON.stringify({ state: document, snapshotDataUrl: snapshotDataUrl ?? null, expectedVersion, title }),
       });
       return jsonOrError<{ eventVersion: number; updatedAt: number }>(response, "Could not sync the shared board.");
     },

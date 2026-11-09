@@ -28,6 +28,7 @@ export class PostgresBoardRepository implements BoardRepository {
       .select({
         id: boards.id,
         externalId: boards.externalId,
+        title: boards.title,
         state: boards.state,
         snapshotDataUrl: includeSnapshot ? boards.snapshotDataUrl : sql<string | null>`null`,
         eventVersion: boards.eventVersion,
@@ -166,6 +167,9 @@ export class PostgresBoardRepository implements BoardRepository {
       .set({
         state: JSON.parse(input.stateJson) as unknown,
         snapshotDataUrl: input.snapshotDataUrl,
+        ...(input.title === undefined
+          ? {}
+          : { title: input.title.trim().slice(0, 120) || "Untitled board" }),
         eventVersion: sql`${boards.eventVersion} + 1`,
         updatedAt: now,
       })
@@ -275,12 +279,13 @@ function toStoredBoard(
   userId: string,
   board: Pick<
     typeof boards.$inferSelect,
-    "externalId" | "state" | "snapshotDataUrl" | "eventVersion" | "lastMcpAt" | "updatedAt"
+    "externalId" | "title" | "state" | "snapshotDataUrl" | "eventVersion" | "lastMcpAt" | "updatedAt"
   >,
 ): StoredBoard {
   return {
     userId,
     boardId: board.externalId,
+    title: board.title,
     stateJson: JSON.stringify(board.state),
     snapshotDataUrl: board.snapshotDataUrl,
     eventVersion: board.eventVersion,
