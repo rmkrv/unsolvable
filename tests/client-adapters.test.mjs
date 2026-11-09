@@ -23,13 +23,14 @@ test("HTTP board gateway owns board route serialization", async () => {
     return Response.json(
       init?.method === "PUT"
         ? { eventVersion: 4, updatedAt: 123 }
-        : { board: null, actions: [] },
+        : input.includes("/actions?") ? { actions: [] } : { board: null },
     );
   };
   const gateway = createHttpBoardGateway(fetcher);
 
   assert.deepEqual(await gateway.read("board-1", 9), { board: null, actions: [] });
-  assert.equal(requests[0].input, "/api/board?boardId=board-1&after=9");
+  assert.equal(requests[0].input, "/api/student/boards/board-1");
+  assert.equal(requests[1].input, "/api/student/boards/board-1/actions?boardId=board-1&after=9");
 
   const document = {
     boardId: "board-1",
@@ -39,8 +40,9 @@ test("HTTP board gateway owns board route serialization", async () => {
     hintLevel: 2,
   };
   assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA==", 3), { eventVersion: 4, updatedAt: 123 });
-  const body = JSON.parse(requests[1].init.body);
-  assert.equal(body.boardId, "board-1");
+  const body = JSON.parse(requests[2].init.body);
+  assert.equal(requests[2].input, "/api/student/boards/board-1");
+  assert.equal("boardId" in body, false);
   assert.deepEqual(body.state, document);
   assert.equal(body.expectedVersion, 3);
 });
