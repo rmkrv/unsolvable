@@ -1,19 +1,11 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/server/auth/current-user";
-import { loadHomeOverview, loadRecentBoards } from "@/lib/server/home/dashboard-data";
+import { GET as getStudentHome } from "@/app/api/student/home/route";
+import { deprecationHeaders } from "@/lib/server/http/route-utils";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Sign in to view Home." }, { status: 401 });
-  try {
-    const [recentBoards, { insights, profile }] = await Promise.all([
-      loadRecentBoards(user.userId),
-      loadHomeOverview(user.userId, user.fullName || user.displayName),
-    ]);
-    return NextResponse.json({ profile, recentBoards, ...insights });
-  } catch {
-    return NextResponse.json({ error: "Could not load Home." }, { status: 500 });
-  }
+  const response = await getStudentHome();
+  for (const [key, value] of Object.entries(deprecationHeaders)) response.headers.set(key, value);
+  response.headers.set("Link", "</api/student/home>; rel=\"successor-version\"");
+  return response;
 }

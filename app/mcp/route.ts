@@ -6,6 +6,7 @@ import { makeId, strokeBounds, type BoardDocument, type Stroke } from "@/lib/dom
 import { aggregateStrokeBounds } from "@/lib/domain/board/operations";
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { getMcpOAuth } from "@/lib/server/auth/mcp-oauth";
+import { resolveViewerForAuthSubject } from "@/lib/server/auth/viewer-service";
 import { applyTutorBoardCommands, enqueueTutorAction, markMcpConnected, readTutorBoard } from "@/lib/server/boards/board-service";
 import { findFreeHandwritingAnchor } from "@/lib/handwriting-placement.mjs";
 import {
@@ -267,7 +268,7 @@ function allowedStrokeIds(stateValue: unknown) {
 export async function POST(request: Request) {
   const auth = await getMcpOAuth(request).requireBearerAuth({ requiredScopes: ["openid"] })(request);
   if (auth instanceof Response) return auth;
-  const userId = auth.sub;
+  const viewer = await resolveViewerForAuthSubject(auth.sub);
 
   let body: JsonObject;
   try {
@@ -293,9 +294,9 @@ export async function POST(request: Request) {
     if (body?.method === "tools/list") return rpcResult(id, { tools: TOOLS });
     if (body?.method !== "tools/call") return rpcError(id, -32601, "Method not found");
 
-    const board = await readTutorBoard(userId, undefined, true);
+    const board = await readTutorBoard(viewer, undefined, true);
     if (!board) return rpcError(id, -32001, "Open Unsolvable and create a board before using its AI tools.");
-    await markMcpConnected(userId, board.boardId);
+    await markMcpConnected(viewer, board.boardId);
 
     const params = asObject(body.params);
     const name = params.name;
@@ -347,11 +348,11 @@ export async function POST(request: Request) {
       const writeAuth = await getMcpOAuth(request).requireBearerAuth({ requiredScopes: ["openid"] })(request);
       if (writeAuth instanceof Response) return writeAuth;
       const result = await applyTutorBoardCommands({
-        userId,
+        viewer,
         boardId: board.boardId,
         expectedVersion: expectedVersion(args, board.eventVersion),
         commands,
-        actor: { id: `agent:${userId}`, type: "agent", onBehalfOf: userId },
+        actor: { id: `agent:${viewer.appUserId}`, type: "agent", onBehalfOf: viewer.appUserId },
       });
       return rpcResult(id, {
         content: [{ type: "text", text: `Applied ${commands.length} board command(s) at event version ${result.eventVersion}.` }],
@@ -365,15 +366,15 @@ export async function POST(request: Request) {
     const compiled = commandsForAction(action, state as BoardDocument);
     const updated = compiled.commands.length
       ? await applyTutorBoardCommands({
-          userId,
+          viewer,
           boardId: board.boardId,
           expectedVersion: board.eventVersion,
           commands: compiled.commands,
-          actor: { id: `agent:${userId}`, type: "agent", onBehalfOf: userId },
+          actor: { id: `agent:${viewer.appUserId}`, type: "agent", onBehalfOf: viewer.appUserId },
         })
       : null;
     const actionId = compiled.speech
-      ? await enqueueTutorAction(userId, board.boardId, { type: "say", speech: compiled.speech, tone: "calm" })
+      ? await enqueueTutorAction(viewer, board.boardId, { type: "say", speech: compiled.speech, tone: "calm" })
       : null;
     if (compiled.speech && !actionId) throw new Error("BOARD_ACTION_NOT_AUTHORIZED");
     return rpcResult(id, {
