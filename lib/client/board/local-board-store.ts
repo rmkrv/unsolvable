@@ -10,6 +10,7 @@ export type LocalBoardState = {
   pages: Page[];
   activePageId: string;
   hintLevel: number;
+  autoObserve: boolean;
 };
 
 export function readLocalBoard(storage: Storage, boardId?: string): LocalBoardState | null {
@@ -21,6 +22,7 @@ export function readLocalBoard(storage: Storage, boardId?: string): LocalBoardSt
     pages: parsed.pages,
     activePageId: parsed.activePageId || parsed.pages[0].id,
     hintLevel: clamp(Number(parsed.hintLevel) || 2, 0, 5),
+    autoObserve: parsed.autoObserve === true,
   };
 }
 

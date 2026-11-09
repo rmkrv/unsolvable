@@ -78,6 +78,7 @@ function summarizeBoard(stateValue: unknown) {
     boardId: state.boardId,
     activePageId: state.activePageId,
     hintLevel: state.hintLevel,
+    autoObserve: state.autoObserve === true,
     viewport,
     snapshot: state.snapshot,
     visibleWorldBounds: {

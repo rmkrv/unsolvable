@@ -38,6 +38,7 @@ test("HTTP board gateway owns board route serialization", async () => {
     activePageId: "page-1",
     viewport: { x: 0, y: 0, zoom: 1 },
     hintLevel: 2,
+    autoObserve: false,
   };
   assert.deepEqual(await gateway.save({
     document,
@@ -62,7 +63,7 @@ test("HTTP board gateway preserves API status and error code", async () => {
 
   await assert.rejects(
     gateway.save({
-      document: { boardId: "board-1", pages: [], activePageId: "page-1", viewport: { x: 0, y: 0, zoom: 1 }, hintLevel: 2 },
+      document: { boardId: "board-1", pages: [], activePageId: "page-1", viewport: { x: 0, y: 0, zoom: 1 }, hintLevel: 2, autoObserve: false },
       expectedVersion: 2,
     }),
     (error) => error instanceof BoardGatewayError && error.status === 409 && error.code === "version_conflict",

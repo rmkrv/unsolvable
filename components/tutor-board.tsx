@@ -184,7 +184,7 @@ export default function TutorBoard({
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget>("codex");
   const [hintLevel, setHintLevel] = useState(2);
-  const [autoObserve, setAutoObserve] = useState(true);
+  const [autoObserve, setAutoObserve] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [toast, setToast] = useState("Draw naturally — Unsolvable will wait for a complete thought.");
@@ -216,6 +216,7 @@ export default function TutorBoard({
   const hasActionCursorRef = useRef(false);
   const serverVersionRef = useRef(0);
   const hintLevelRef = useRef(hintLevel);
+  const autoObserveRef = useRef(autoObserve);
   const hydrationCompleteRef = useRef(false);
   const saveCoordinatorRef = useRef<BoardSaveCoordinator | null>(null);
   const applyingRemoteStateRef = useRef(false);
@@ -247,6 +248,13 @@ export default function TutorBoard({
   useEffect(() => {
     hintLevelRef.current = hintLevel;
   }, [hintLevel]);
+  useEffect(() => {
+    autoObserveRef.current = autoObserve;
+    if (autoObserve) return;
+    interactionCountRef.current = 0;
+    if (observationTimerRef.current) clearTimeout(observationTimerRef.current);
+    observationTimerRef.current = null;
+  }, [autoObserve]);
 
   if (saveCoordinatorRef.current == null) {
     saveCoordinatorRef.current = new BoardSaveCoordinator(boardGateway);
@@ -277,6 +285,7 @@ export default function TutorBoard({
         setPages(saved.pages);
         setActivePageId(saved.activePageId);
         setHintLevel(saved.hintLevel);
+        setAutoObserve(saved.autoObserve);
       });
       return () => cancelAnimationFrame(frame);
     } catch {
@@ -289,10 +298,10 @@ export default function TutorBoard({
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      writeLocalBoard(localStorage, { pages, activePageId, hintLevel }, boardId);
+      writeLocalBoard(localStorage, { pages, activePageId, hintLevel, autoObserve }, boardId);
     }, 250);
     return () => clearTimeout(timer);
-  }, [activePageId, boardId, hintLevel, pages]);
+  }, [activePageId, autoObserve, boardId, hintLevel, pages]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -835,6 +844,7 @@ export default function TutorBoard({
               }
             : undefined,
           hintLevel: hintLevelRef.current,
+          autoObserve: autoObserveRef.current,
           request: requestRef.current,
         },
         snapshotDataUrl,
@@ -866,6 +876,7 @@ export default function TutorBoard({
           setPages(payload.board.state.pages);
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
+          setAutoObserve(payload.board.state.autoObserve === true);
         }
         if (shouldApplyRemote && payload.board?.title) {
           setBoardTitle(payload.board.title);
@@ -955,7 +966,7 @@ export default function TutorBoard({
       });
     }, 700);
     return () => clearTimeout(timer);
-  }, [activePageId, hintLevel, pages, sessionId, syncBoard]);
+  }, [activePageId, autoObserve, hintLevel, pages, sessionId, syncBoard]);
 
   const interrupt = useCallback(async () => {
     if (localTutor && sessionId) await tutorTransport.interrupt(sessionId);

@@ -31,6 +31,7 @@ export type BoardDocument = {
     pixelRatio: number;
   };
   hintLevel: number;
+  autoObserve?: boolean;
   request?: { message: string; trigger: string; at: number } | null;
 };
 
@@ -41,6 +42,7 @@ export function createEmptyBoardDocument(boardId: string): BoardDocument {
     activePageId: "page-1",
     viewport: { x: 86, y: 70, zoom: 1 },
     hintLevel: 2,
+    autoObserve: false,
     request: null,
   };
 }
