@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useTransition, type ComponentProps, type MouseEvent } from "react";
+import { useTransition, type ComponentProps, type MouseEvent } from "react";
 import { cn } from "@/lib/utils";
-
-const prefetchedRoutes = new Set<string>();
 
 type PendingLinkProps = Omit<ComponentProps<typeof Link>, "href"> & {
   href: string;
@@ -24,21 +22,6 @@ export function PendingLink({
   const pathname = usePathname();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-
-  useEffect(() => {
-    if (!prefetch) return;
-    if (prefetchedRoutes.has(href)) return;
-    prefetchedRoutes.add(href);
-
-    const runPrefetch = () => router.prefetch(href);
-    if ("requestIdleCallback" in window) {
-      const requestId = window.requestIdleCallback(runPrefetch, { timeout: 1_500 });
-      return () => window.cancelIdleCallback(requestId);
-    }
-
-    const timeoutId = globalThis.setTimeout(runPrefetch, 250);
-    return () => globalThis.clearTimeout(timeoutId);
-  }, [href, prefetch, router]);
 
   function navigate(event: MouseEvent<HTMLAnchorElement>) {
     onClick?.(event);

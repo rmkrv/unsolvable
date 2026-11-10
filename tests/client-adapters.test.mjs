@@ -69,3 +69,18 @@ test("HTTP board gateway preserves API status and error code", async () => {
     (error) => error instanceof BoardGatewayError && error.status === 409 && error.code === "version_conflict",
   );
 });
+
+test("HTTP board gateway can poll actions without downloading the board", async () => {
+  const { createHttpBoardGateway } = await importTypeScript("lib/client/board/board-gateway.ts");
+  const requests = [];
+  const gateway = createHttpBoardGateway(async (input) => {
+    requests.push(input);
+    return Response.json({ actions: [{ id: 12, value: { type: "speak", speech: "Ready" } }] });
+  });
+
+  const result = await gateway.read("board-1", 11, { includeBoard: false });
+
+  assert.equal(result.board, null);
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(requests, ["/api/student/boards/board-1/actions?boardId=board-1&after=11"]);
+});

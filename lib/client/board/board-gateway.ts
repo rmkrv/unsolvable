@@ -34,7 +34,7 @@ export type SharedBoardResponse = {
 };
 
 export interface BoardGateway {
-  read(boardId: string, after: number): Promise<SharedBoardResponse>;
+  read(boardId: string, after: number, options?: { includeBoard?: boolean }): Promise<SharedBoardResponse>;
   save(request: BoardSaveRequest): Promise<BoardSaveResult>;
 }
 
@@ -48,12 +48,15 @@ async function jsonOrError<T>(response: Response, fallback: string): Promise<T> 
 
 export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGateway {
   return {
-    async read(boardId, after) {
+    async read(boardId, after, { includeBoard = true } = {}) {
       const params = new URLSearchParams({ boardId, after: String(after) });
-      const boardResponse = await fetcher(`/api/student/boards/${encodeURIComponent(boardId)}`, { cache: "no-store" });
-      const boardPayload = await jsonOrError<{ board: SharedBoardResponse["board"] }>(boardResponse, "Shared board unavailable");
-      const actionsResponse = await fetcher(`/api/student/boards/${encodeURIComponent(boardId)}/actions?${params}`, { cache: "no-store" });
-      const actionsPayload = await jsonOrError<{ actions: SharedBoardResponse["actions"] }>(actionsResponse, "Board actions unavailable");
+      const boardRequest = includeBoard
+        ? fetcher(`/api/student/boards/${encodeURIComponent(boardId)}`, { cache: "no-store" })
+            .then((response) => jsonOrError<{ board: SharedBoardResponse["board"] }>(response, "Shared board unavailable"))
+        : Promise.resolve({ board: null });
+      const actionsRequest = fetcher(`/api/student/boards/${encodeURIComponent(boardId)}/actions?${params}`, { cache: "no-store" })
+        .then((response) => jsonOrError<{ actions: SharedBoardResponse["actions"] }>(response, "Board actions unavailable"));
+      const [boardPayload, actionsPayload] = await Promise.all([boardRequest, actionsRequest]);
       return { board: boardPayload.board, actions: actionsPayload.actions };
     },
     async save({ document, snapshotDataUrl, expectedVersion, title }) {
