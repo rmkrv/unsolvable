@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,7 +24,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Progress } from "@/components/ui/progress";
 import { PendingLink } from "@/components/pending-link";
 import {
   Sheet,
@@ -152,11 +150,6 @@ function SidebarContent({ active }: { active: AppSection }) {
       </nav>
 
       <div className="mt-auto space-y-3 pt-8">
-        <div className="rounded-lg border border-border bg-background p-4">
-          <div className="flex items-center justify-between gap-3"><span className="text-xs font-medium">Learning rhythm</span><Badge variant="secondary">On track</Badge></div>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">Two focused sessions this week. One more builds momentum.</p>
-          <Progress className="mt-3 h-1.5" value={66} />
-        </div>
         <Link href="/settings/profile" className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform,box-shadow] duration-200 ease-out active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none ${active === "settings" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}>
           <CircleUserRound size={18} />Account settings
         </Link>
