@@ -74,6 +74,28 @@ export async function isGoogleCalendarConnected(userId: string) {
   return Boolean(await getCalendarRepository().getGoogleConnection(userId));
 }
 
+export async function disconnectGoogleCalendar(viewer: Viewer) {
+  const repository = getCalendarRepository();
+  const connection = await repository.getGoogleConnection(viewer.appUserId);
+  if (!connection) return;
+  const refreshToken = await decryptRefreshToken(
+    connection.encryptedRefreshToken,
+    googleConfig().encryptionKey,
+  );
+  const response = await fetch("https://oauth2.googleapis.com/revoke", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ token: refreshToken }),
+  });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null) as { error?: string } | null;
+    if (detail?.error !== "invalid_token") {
+      throw new Conflict("Google Calendar access could not be revoked. Try again in a moment.");
+    }
+  }
+  await repository.deleteGoogleConnection(viewer.appUserId);
+}
+
 export async function exportCalendarOccurrence(
   viewer: Viewer,
   eventId: string,

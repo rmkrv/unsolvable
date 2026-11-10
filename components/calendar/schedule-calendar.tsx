@@ -12,6 +12,7 @@ import {
   CloudUpload,
   Pencil,
   Repeat2,
+  Unplug,
   X,
 } from "lucide-react";
 import type { CalendarOccurrenceView } from "@/lib/server/calendar/calendar-service";
@@ -47,6 +48,7 @@ export function ScheduleCalendar({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const disconnectDialogRef = useRef<HTMLDialogElement>(null);
   const [selected, setSelected] = useState<CalendarOccurrenceView | null>(null);
   const [selectedDate, setSelectedDate] = useState(`${month}-01`);
   const [editorScope, setEditorScope] = useState<"month" | "week">("month");
@@ -119,6 +121,28 @@ export function ScheduleCalendar({
     router.push(`/api/integrations/google-calendar/connect?returnTo=${encodeURIComponent(returnTo)}`);
   };
 
+  async function disconnectGoogle() {
+    if (isPreview) {
+      disconnectDialogRef.current?.close();
+      setNotice("Disconnect is available in a signed-in workspace.");
+      return;
+    }
+    setBusy("disconnect");
+    setNotice(null);
+    try {
+      const response = await fetch("/api/integrations/google-calendar/disconnect", { method: "DELETE" });
+      const body = await response.json() as { error?: { message?: string } };
+      if (!response.ok) throw new Error(body.error?.message || "Google Calendar could not be disconnected.");
+      disconnectDialogRef.current?.close();
+      setNotice("Google Calendar disconnected and its stored authorization was removed.");
+      router.refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Google Calendar could not be disconnected.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function exportToGoogle(payload: Record<string, unknown>, key: string) {
     if (isPreview) {
       setNotice("Google Calendar export is available in a signed-in workspace.");
@@ -170,6 +194,11 @@ export function ScheduleCalendar({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {googleConnected && (
+            <button className="btn btn-ghost" type="button" onClick={() => disconnectDialogRef.current?.showModal()} disabled={busy !== null}>
+              <Unplug size={16} /> Disconnect Google
+            </button>
+          )}
           <button
             className="btn btn-outline"
             type="button"
@@ -308,6 +337,20 @@ export function ScheduleCalendar({
         onSaved={() => { dialogRef.current?.close(); router.refresh(); setNotice(editorScope === "week" ? "That week was updated. The other weeks are unchanged." : selected ? "Weekly schedule updated." : "Weekly schedule created."); }}
         isPreview={isPreview}
       />
+
+      <dialog ref={disconnectDialogRef} className="modal modal-bottom sm:modal-middle">
+        <div className="modal-box max-w-lg">
+          <h3 className="text-xl font-semibold">Disconnect Google Calendar?</h3>
+          <p className="mt-3 text-sm leading-6 text-base-content/65">This revokes Unsolvable’s Google access and deletes the encrypted refresh token stored by this app. Events already copied into Google Calendar stay there.</p>
+          <div className="modal-action">
+            <form method="dialog"><button className="btn" type="submit">Cancel</button></form>
+            <button className="btn btn-error" type="button" onClick={disconnectGoogle} disabled={busy === "disconnect"}>
+              {busy === "disconnect" && <span className="loading loading-spinner loading-sm" />} Disconnect
+            </button>
+          </div>
+        </div>
+        <form method="dialog" className="modal-backdrop"><button>Close disconnect confirmation</button></form>
+      </dialog>
     </div>
   );
 }

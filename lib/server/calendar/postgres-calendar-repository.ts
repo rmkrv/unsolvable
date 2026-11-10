@@ -109,6 +109,10 @@ export class PostgresCalendarRepository implements CalendarRepository {
     });
   }
 
+  async deleteGoogleConnection(userId: string) {
+    await this.db.delete(googleCalendarConnections).where(eq(googleCalendarConnections.userId, userId));
+  }
+
   async getExport(calendarEventId: string, userId: string, occurrenceStart: Date) {
     const rows = await this.db.select().from(calendarEventExports).where(and(
       eq(calendarEventExports.calendarEventId, calendarEventId),

@@ -72,6 +72,7 @@ export interface CalendarRepository {
   deleteEvents(eventIds: string[]): Promise<void>;
   getGoogleConnection(userId: string): Promise<GoogleCalendarConnectionRecord | null>;
   saveGoogleConnection(connection: GoogleCalendarConnectionRecord): Promise<void>;
+  deleteGoogleConnection(userId: string): Promise<void>;
   getExport(calendarEventId: string, userId: string, occurrenceStart: Date): Promise<CalendarExportRecord | null>;
   saveExport(input: Omit<CalendarExportRecord, "id">): Promise<CalendarExportRecord>;
 }
