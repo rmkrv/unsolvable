@@ -68,7 +68,7 @@ const parentNavigation = [
   { label: "Students", href: "/parent#students" },
   { label: "Attendance", href: "/parent#attendance" },
   { label: "Performance", href: "/parent#performance" },
-  { label: "Planning", href: "/parent#planning" },
+  { label: "Planning", href: "/parent/planning" },
   { label: "Billing", href: "/parent#billing" },
 ];
 

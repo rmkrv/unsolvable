@@ -42,3 +42,12 @@ export class Conflict extends Error {
     this.name = "Conflict";
   }
 }
+
+export class InvalidInput extends Error {
+  readonly code = "invalid_input";
+
+  constructor(message = "The submitted input is invalid.") {
+    super(message);
+    this.name = "InvalidInput";
+  }
+}

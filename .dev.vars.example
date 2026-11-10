@@ -12,3 +12,10 @@ NEON_AUTH_COOKIE_SECRET=
 
 # The exact MCP audience. Use the public HTTPS URL in hosted environments.
 MCP_RESOURCE_URL=http://127.0.0.1:5173/mcp
+
+# Google Calendar OAuth web client. Register this callback URL locally:
+# http://127.0.0.1:5173/api/integrations/google-calendar/callback
+GOOGLE_CALENDAR_CLIENT_ID=
+GOOGLE_CALENDAR_CLIENT_SECRET=
+# A unique secret of at least 32 characters used to encrypt refresh tokens at rest.
+GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY=

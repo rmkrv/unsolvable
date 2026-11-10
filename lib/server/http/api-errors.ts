@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   AuthenticationRequired,
   Conflict,
+  InvalidInput,
   ResourceForbidden,
   ResourceNotFound,
   RoleForbidden,
@@ -15,6 +16,7 @@ export function apiErrorResponse(error: unknown): NextResponse<ApiErrorBody> | n
     return errorResponse(error.code, error.message, 403);
   }
   if (error instanceof ResourceNotFound) return errorResponse(error.code, error.message, 404);
+  if (error instanceof InvalidInput) return errorResponse(error.code, error.message, 400);
   if (error instanceof Conflict) return errorResponse(error.code, error.message, 409);
   return null;
 }

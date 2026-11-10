@@ -26,6 +26,13 @@ export const parentStudentLinkStatus = pgEnum("parent_student_link_status", [
   "active",
   "revoked",
 ]);
+export const calendarEventKind = pgEnum("calendar_event_kind", ["study_session", "deadline"]);
+export const calendarEventStatus = pgEnum("calendar_event_status", ["scheduled", "completed", "cancelled"]);
+export const calendarRecurrenceFrequency = pgEnum("calendar_recurrence_frequency", [
+  "daily",
+  "weekly",
+  "monthly",
+]);
 
 export const appUsers = pgTable("app_users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -73,6 +80,91 @@ export const parentStudentLinks = pgTable(
     index("parent_student_links_parent_status_idx").on(table.parentUserId, table.status),
     index("parent_student_links_student_status_idx").on(table.studentUserId, table.status),
     check("parent_student_links_distinct_users_check", sql`${table.parentUserId} <> ${table.studentUserId}`),
+  ],
+);
+
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    updatedByUserId: uuid("updated_by_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    kind: calendarEventKind("kind").notNull().default("study_session"),
+    status: calendarEventStatus("status").notNull().default("scheduled"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    timeZone: text("time_zone").notNull().default("UTC"),
+    recurrenceFrequency: calendarRecurrenceFrequency("recurrence_frequency"),
+    recurrenceInterval: integer("recurrence_interval").notNull().default(1),
+    recurrenceEndsAt: timestamp("recurrence_ends_at", { withTimezone: true }),
+    reminderMinutes: integer("reminder_minutes").notNull().default(30),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    planGroupId: uuid("plan_group_id"),
+    planStartsAt: timestamp("plan_starts_at", { withTimezone: true }),
+    planEndsAt: timestamp("plan_ends_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("calendar_events_student_starts_idx").on(table.studentUserId, table.startsAt),
+    index("calendar_events_student_recurrence_idx").on(
+      table.studentUserId,
+      table.recurrenceEndsAt,
+    ),
+    index("calendar_events_plan_group_idx").on(table.planGroupId),
+    check("calendar_events_time_order_check", sql`${table.endsAt} > ${table.startsAt}`),
+    check(
+      "calendar_events_recurrence_interval_check",
+      sql`${table.recurrenceInterval} >= 1 AND ${table.recurrenceInterval} <= 30`,
+    ),
+    check(
+      "calendar_events_reminder_minutes_check",
+      sql`${table.reminderMinutes} >= 0 AND ${table.reminderMinutes} <= 40320`,
+    ),
+  ],
+);
+
+export const googleCalendarConnections = pgTable("google_calendar_connections", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => appUsers.id, { onDelete: "cascade" }),
+  encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+  grantedScopes: text("granted_scopes").notNull(),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
+  ...timestamps,
+});
+
+export const calendarEventExports = pgTable(
+  "calendar_event_exports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    calendarEventId: uuid("calendar_event_id")
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    occurrenceStart: timestamp("occurrence_start", { withTimezone: true }).notNull(),
+    googleCalendarId: text("google_calendar_id").notNull().default("primary"),
+    googleEventId: text("google_event_id").notNull(),
+    exportedAt: timestamp("exported_at", { withTimezone: true }).notNull().defaultNow(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("calendar_event_exports_occurrence_uidx").on(
+      table.calendarEventId,
+      table.userId,
+      table.occurrenceStart,
+    ),
+    index("calendar_event_exports_user_idx").on(table.userId, table.exportedAt),
   ],
 );
 

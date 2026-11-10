@@ -7,5 +7,8 @@ declare namespace Cloudflare {
     NEON_AUTH_COOKIE_SECRET: string;
     NEON_AUTH_JWKS_URL?: string;
     MCP_RESOURCE_URL?: string;
+    GOOGLE_CALENDAR_CLIENT_ID?: string;
+    GOOGLE_CALENDAR_CLIENT_SECRET?: string;
+    GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY?: string;
   }
 }

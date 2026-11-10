@@ -3,7 +3,7 @@
 ## Highest priority
 
 - [ ] Implement the `student`, `parent`, and `admin` role system, including parent-student relationships, server-side authorization, separate dashboards, attendance/performance summaries, audit history, and billing ownership separated from subscription beneficiaries. Students may learn and pay independently; no age or guardian requirement is part of the role model.
-- [ ] Implement calendar planning across the frontend, backend, and database, including study-plan scheduling, deadlines, reminders, recurring sessions, time-zone handling, completion state, and authorization for parent-managed plans.
+- [x] Implement calendar planning across the frontend, backend, and database, including study-plan scheduling, deadlines, reminders, recurring sessions, time-zone handling, completion state, authorization for parent-managed plans, and explicit Google Calendar export by event or month.
 
 ## High importance
 

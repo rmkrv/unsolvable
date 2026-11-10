@@ -45,7 +45,9 @@ The current root route is both the product entry and an authenticated board. Spl
 | `/onboarding` | Signed in, first run | Select `student` or `parent`; public onboarding never grants `admin` |
 | `/app` | Signed in | Resolve the viewer and route student → `/home`, parent → `/parent`, admin → `/admin` |
 | `/home` | Student | Next-best action, product-area entry points, recent boards |
+| `/calendar` | Student | Read, create, edit, complete, and explicitly export personal study plans |
 | `/parent` | Parent | Linked-student summaries, owned billing, settings |
+| `/parent/planning` | Parent with active student link | Read, create, edit, and explicitly export a linked student's study plans |
 | `/admin` | Admin | Protected user, relationship, billing-support, and audit lookup |
 | `/practice` | Signed in | Start from a problem, topic, blank board, or assignment; resume active practice |
 | `/weak-spots` | Signed in | Evidence, confidence, recommended practice, and progress by mathematical skill |
@@ -63,7 +65,7 @@ The current root route is both the product entry and an authenticated board. Spl
 **Decision**
 
 - The **public shell** contains brand navigation, sign in, and a single dominant sign-up call to action.
-- The **student shell** contains persistent navigation for Home, Practice, Weak Spots, Friends, and Boards, plus notifications/help and the user menu.
+- The **student shell** contains persistent navigation for Home, Practice, Schedule, Weak Spots, Friends, and Boards, plus notifications/help and the user menu.
 - The **parent shell** contains Students, Attendance, Performance, Planning, Billing, and Settings without learner-only destinations.
 - The **admin shell** contains Users, Relationships, Billing Support, and Audit without customer-learning destinations.
 - The board route uses a focused variation of the app shell: the board owns most of the viewport, while Home/Boards and account controls remain reachable.

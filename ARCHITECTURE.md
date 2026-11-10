@@ -37,6 +37,8 @@ Runtime providers stay behind replaceable boundaries:
 | Account profile | `lib/server/accounts/account-repository.ts` | Neon PostgreSQL | Same contract |
 | Student summaries | `lib/server/students/student-summary-repository.ts` | Neon PostgreSQL | Same contract |
 | Parent links | `lib/server/parents/parent-link-repository.ts` | Neon PostgreSQL | Same contract |
+| Learning calendar | `lib/server/calendar/calendar-repository.ts` | Neon PostgreSQL | Same contract |
+| Google Calendar export | `lib/server/calendar/google-calendar-service.ts` | OAuth 2.0 + Calendar Events API | Same explicit export boundary |
 | Billing ownership and entitlements | `lib/server/billing/billing-repository.ts` | Neon PostgreSQL | Payment-provider adapter behind the billing service |
 | Administration and audit | `lib/server/admin/*` | Neon PostgreSQL | Same internal-only boundary |
 | Browser board sync | `lib/client/board/board-gateway.ts` | Versioned `/api/student/boards/*` polling | HTTP bootstrap + Durable Object WebSocket |
@@ -71,7 +73,7 @@ Full-document saves are a transitional transport, not the target collaboration m
 
 ## Account and learning data
 
-Neon Auth owns credentials, sessions, primary email, password changes, and reset tokens. The application database owns account roles, `user_profiles`, parent-student links, billing ownership and entitlements, collaboration records, practice evidence, and derived skill mastery. Profile, billing, student, parent, and admin reads go through focused services; React pages and route handlers never query PostgreSQL directly.
+Neon Auth owns credentials, sessions, primary email, password changes, and reset tokens. The application database owns account roles, `user_profiles`, parent-student links, billing ownership and entitlements, learning-calendar events and export receipts, collaboration records, practice evidence, and derived skill mastery. Profile, billing, calendar, student, parent, and admin reads go through focused services; React pages and route handlers never query PostgreSQL directly.
 
 ## Account roles and authorization
 
@@ -83,7 +85,9 @@ Authorization combines independent dimensions:
 2. an active parent-student relationship for parent summary access;
 3. resource ownership or membership for billing accounts, boards, and workspaces.
 
-A parent relationship does not grant billing access, and paying for a beneficiary does not grant learning-data access. Parent APIs expose bounded attendance and performance aggregates only—never raw boards or private tutor conversations. Admins use dedicated `/api/admin/*` endpoints and do not silently bypass customer services.
+A parent relationship does not grant billing access, and paying for a beneficiary does not grant learning-data access. An active parent-student link grants read, create, and edit access to that student's learning calendar, while pending or revoked links grant none. Parent APIs expose bounded attendance and performance aggregates and the explicitly shared calendar—never raw boards or private tutor conversations. Admins use dedicated `/api/admin/*` endpoints and do not silently bypass customer services.
+
+Calendar events are stored once for the student with UTC timestamps plus an IANA time-zone identifier. Recurrence expansion preserves the local wall-clock time through daylight-saving changes. Students manage their own events; actively linked parents may manage the same records. Google Calendar is an explicit export destination, not a second source of truth: a user connects their own Google account, then exports one occurrence or all study-session occurrences in a selected month. Export receipts make repeated actions update the existing Google event instead of duplicating it. Refresh tokens are encrypted at rest.
 
 Billing is split into `billing_accounts` (owner), `subscriptions` (provider plan state), and `subscription_entitlements` (beneficiary). Only an account owner may manage provider billing details. Entitlement responses never expose provider identifiers or invoices belonging to another user.
 

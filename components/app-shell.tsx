@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Bell,
   BookOpen,
+  CalendarDays,
   ChevronDown,
   CircleUserRound,
   Home,
@@ -36,11 +37,12 @@ import type { Viewer } from "@/lib/server/auth/viewer";
 
 type ShellUser = Pick<Viewer, "displayName" | "email" | "fullName">;
 
-export type AppSection = "home" | "practice" | "weak-spots" | "friends" | "boards" | "settings";
+export type AppSection = "home" | "practice" | "calendar" | "weak-spots" | "friends" | "boards" | "settings";
 
 const navigation = [
   { id: "home" as const, label: "Home", href: "/home", icon: Home },
   { id: "practice" as const, label: "Practice", href: "/boards/current", icon: BookOpen },
+  { id: "calendar" as const, label: "Schedule", href: "/calendar", icon: CalendarDays },
   { id: "weak-spots" as const, label: "Weak spots", href: "/weak-spots", icon: Target },
   { id: "friends" as const, label: "Friends", href: "/friends", icon: Users },
   { id: "boards" as const, label: "Boards", href: "/boards", icon: LayoutGrid },
@@ -111,7 +113,7 @@ export function StudentShell({
 
         <main className="app-page-enter min-w-0 pb-24 lg:pb-8">{children}</main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-border bg-background/95 px-2 backdrop-blur-xl lg:hidden" aria-label="Primary navigation">
+        <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-6 border-t border-border bg-background/95 px-1 backdrop-blur-xl lg:hidden" aria-label="Primary navigation">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
