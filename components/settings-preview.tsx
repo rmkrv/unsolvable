@@ -55,13 +55,13 @@ export function SettingsPreview({
       return;
     }
     try {
-      const response = await fetch("/api/me/profile", {
+      const response = await fetch("/api/account/profile", {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ displayName, isDiscoverable: discoverable }),
       });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Could not save your profile.");
+      const payload = await response.json() as { error?: { message?: string } };
+      if (!response.ok) throw new Error(payload.error?.message || "Could not save your profile.");
       setStatus("saved");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save your profile.");

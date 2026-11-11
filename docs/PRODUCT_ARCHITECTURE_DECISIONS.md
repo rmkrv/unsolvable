@@ -1,14 +1,14 @@
 # Product architecture decisions
 
-Status: Proposed  
-Date: 2026-11-07  
+Status: Accepted
+Date: 2026-11-09
 Scope: Public entry, authenticated home, account settings, and the product areas surfaced from home.
 
 ## Product model
 
 Unsolvable is a collaborative mathematics workspace built around AI-assisted boards. The public site explains the product; the signed-in application helps a learner decide what to do next and resume their work.
 
-The primary audience is learners in upper secondary school through the first years of university: people facing material difficult enough to require careful explanation, but who still have time to build real understanding. Younger learners may use age-appropriate material, but the product's visual language remains mature and their account/social experience requires stricter safeguards.
+The primary audience is learners in upper secondary school through the first years of university: people facing material difficult enough to require careful explanation, but who still have time to build real understanding. The product's visual language remains mature. Account authorization is role-based and does not infer age, minority, consent, or guardianship.
 
 The first release has four product capabilities:
 
@@ -27,7 +27,7 @@ The first release has four product capabilities:
 - `/home` is the authenticated product home.
 - `/boards/[boardId]` is the canonical board URL. A board ID is always explicit in the URL so sharing, collaboration, history, and MCP access do not depend on whichever board was opened last.
 - `/settings/*`, `/practice`, `/weak-spots`, and `/friends` require authentication.
-- After sign-in, return the user to a validated `redirectTo` route; otherwise send them to `/home`.
+- After sign-in, send the user through `/app`, which preserves only a validated, same-origin destination permitted for the viewer's role; otherwise use the role entry route.
 - A signed-in visitor may still open `/`. The primary call to action becomes **Go to home** rather than forcing a redirect.
 
 **Why**
@@ -42,25 +42,32 @@ The current root route is both the product entry and an authenticated board. Spl
 | `/auth/sign-in` | Public | Sign in, password recovery entry, OAuth continuation |
 | `/auth/sign-up` | Public | Create an account and continue to onboarding or the requested destination |
 | `/auth/forgot-password` | Public | Request a password-reset message without revealing whether an account exists |
-| `/onboarding` | Signed in, first run | Capture learning goal and level, then offer a baseline practice/diagnostic board |
-| `/home` | Signed in | Next-best action, product-area entry points, recent boards |
+| `/onboarding` | Signed in, first run | Select `student` or `parent`; public onboarding never grants `admin` |
+| `/app` | Signed in | Resolve the viewer and route student → `/home`, parent → `/parent`, admin → `/admin` |
+| `/home` | Student | Next-best action, product-area entry points, recent boards |
+| `/calendar` | Student | Read, create, edit, complete, and explicitly export personal study plans |
+| `/parent` | Parent | Linked-student summaries, owned billing, settings |
+| `/parent/planning` | Parent with active student link | Read, create, edit, and explicitly export a linked student's study plans |
+| `/admin` | Admin | Protected user, relationship, billing-support, and audit lookup |
 | `/practice` | Signed in | Start from a problem, topic, blank board, or assignment; resume active practice |
 | `/weak-spots` | Signed in | Evidence, confidence, recommended practice, and progress by mathematical skill |
 | `/friends` | Signed in | Search discoverable users, requests, collaborators, blocked users |
-| `/boards` | Signed in | Search and manage all boards |
-| `/boards/[boardId]` | Member or invited visitor | The existing AI-assisted whiteboard experience |
-| `/settings/profile` | Signed in | Name, avatar, profile visibility |
+| `/boards` | Student | Search and manage all authorized boards |
+| `/boards/[boardId]` | Student board member | The existing AI-assisted whiteboard experience |
+| `/settings/profile` | Student | Name, avatar, profile visibility; parent/admin settings stay in their shells |
 | `/settings/account` | Signed in | Primary email, recovery email, account export/deletion |
 | `/settings/security` | Signed in | Password change, active sessions, future MFA/passkeys |
 | `/settings/billing` | Signed in | Plan, invoices, payment-provider portal |
 | `/invites/[token]` | Public token entry | Explain the invitation, authenticate if needed, then accept or decline |
 
-## ADR-002: Use two application shells
+## ADR-002: Use role-specific application shells
 
 **Decision**
 
 - The **public shell** contains brand navigation, sign in, and a single dominant sign-up call to action.
-- The **app shell** contains persistent navigation for Home, Practice, Weak Spots, Friends, and Boards, plus notifications/help and the user menu.
+- The **student shell** contains persistent navigation for Home, Practice, Schedule, Weak Spots, Friends, and Boards, plus notifications/help and the user menu.
+- The **parent shell** contains Students, Attendance, Performance, Planning, Billing, and Settings without learner-only destinations.
+- The **admin shell** contains Users, Relationships, Billing Support, and Audit without customer-learning destinations.
 - The board route uses a focused variation of the app shell: the board owns most of the viewport, while Home/Boards and account controls remain reachable.
 - On narrow screens, the primary app destinations move to a compact bottom navigation or menu; the board keeps its existing tool-first layout.
 
@@ -143,7 +150,7 @@ Recovery email should only be shown if the authentication provider supports it a
 - A board invitation grants access to exactly one board or workspace after acceptance.
 - User discovery is opt-in. Search returns only deliberately discoverable profiles and never exposes an email address.
 - Requests, blocks, and reports are first-class states; a block prevents discovery, requests, invitations, and presence between the two users.
-- Open people search is unavailable to younger learners until age, consent, moderation, and regional requirements are implemented. Their collaboration must use a constrained mechanism such as an approved invitation, classroom, or guardian-managed group.
+- Parent-student access is a separate explicit relationship and never follows from friendship, board membership, or billing.
 
 Suggested collaboration records:
 
@@ -190,22 +197,27 @@ Start with a small, versioned skill taxonomy. Do not bake topic names into UI co
 
 **Decision**
 
-Keep the current board domain and repository boundary, but replace the implicit “latest board” HTTP behavior with explicit resources:
+Use role-specific resources while keeping account and billing routes role-neutral:
 
 ```text
-GET    /api/boards?cursor=&limit=
-POST   /api/boards
-GET    /api/boards/[boardId]
-PUT    /api/boards/[boardId]
-DELETE /api/boards/[boardId]
-POST   /api/boards/[boardId]/opened
-GET    /api/boards/[boardId]/actions?after=
-GET    /api/me
-PATCH  /api/me/profile
-GET    /api/me/home
+GET    /api/account
+PATCH  /api/account/profile
+POST   /api/account/role-selection
+GET    /api/billing
+GET    /api/billing/entitlements
+GET    /api/student/home
+GET    /api/student/boards
+POST   /api/student/boards
+GET    /api/student/boards/[boardId]
+PUT    /api/student/boards/[boardId]
+GET    /api/parent/students/[studentId]/performance
+GET    /api/parent/students/[studentId]/attendance
+GET    /api/admin/users
+PATCH  /api/admin/users/[userId]/role
+GET    /api/admin/audit-events
 ```
 
-`GET /api/me/home` may aggregate the small Home payload, but domain services remain separate. The MCP endpoint continues to authorize against explicit board membership and should require a board identity when more than one board exists.
+The old `/api/me/*`, `/api/boards`, and `/api/board` routes remain thin, deprecated compatibility adapters for one release. They delegate to the same role-aware services and advertise their successor routes. The MCP endpoint requires a student viewer plus explicit board membership.
 
 Existing optimistic event-version checks remain in place for board writes.
 
@@ -323,6 +335,24 @@ These are visual references, not approved accessibility values. The complete the
 
 Use concise, respectful language that assumes the learner is capable. Prefer “Let’s work through the step that broke down” over “You failed this topic.” Explanations may be simple, but never patronizing.
 
+## ADR-013: Separate role, relationship, and billing authorization
+
+**Decision**
+
+- Every application account has exactly one role: `student`, `parent`, or `admin`. Existing accounts migrate to confirmed students.
+- Students retain independent learning rights and may own their billing account. A student does not require a parent link.
+- Parents have no student-learning rights. They may read bounded performance and attendance summaries only for students with an active parent-student link. Pending and revoked links grant nothing; raw boards and private tutor conversations are never parent summaries.
+- Parent relationships and billing are independent. A relationship does not grant billing access, and paying for a beneficiary does not grant performance, attendance, board, or profile access.
+- Billing accounts are owned by a student or parent. Subscriptions carry provider plan state, and subscription entitlements identify beneficiaries. Only the billing-account owner may manage payment details or open the provider portal.
+- Admin is never selectable during public onboarding and cannot be granted through a public API. Admins use dedicated `/api/admin/*` and `/admin` surfaces; role changes and exceptional operations are audited. Impersonation is outside this release.
+- The role model contains no age, date-of-birth, minor, guardian, consent, or age-derived authorization behavior.
+
+Authorization is enforced in services and route handlers as three distinct checks: role capability, relationship scope, and resource ownership or membership. UI visibility is not an authorization boundary. Unrelated private resources return `404` where revealing their existence would leak data.
+
+Attendance in this release is derived from `practice_sessions`: `started_at` means activity and `completed_at` means completed attendance. The product does not claim a missed session until a future scheduling model records planned sessions.
+
+Legacy `/api/me/*`, `/api/boards`, and `/api/board` callers receive one release of deprecated adapters. Atomic internal callers use the role-specific resource routes immediately.
+
 ## Delivery slices
 
 1. **Design-system and navigation foundation** — add the daisyUI 5 dependency and custom `unsolvable` theme, move the current board to `/boards/[boardId]`, make `/` public, add `/home`, app/public shells, explicit board listing, and per-user recent activity.
@@ -338,7 +368,5 @@ These do not block the navigation foundation, but they should be decided before 
 
 - what evidence qualifies a skill diagnosis and how confidence is communicated;
 - whether users can be found by username only, institution, invite code, or another privacy-preserving identifier;
-- the billing model and entitlement boundaries;
 - the deletion grace period and legally required retention;
-- whether minors are in scope, which materially changes discovery, messaging, consent, and safety requirements.
 

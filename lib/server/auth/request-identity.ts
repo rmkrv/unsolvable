@@ -1,13 +1,16 @@
-import { getCurrentUser } from "@/lib/server/auth/current-user";
+import { getCurrentViewer, requireRequestViewer } from "@/lib/server/auth/viewer-service";
+import type { Viewer } from "@/lib/server/auth/viewer";
 
 export async function requestUserId(): Promise<string | null> {
-  return (await getCurrentUser())?.userId ?? null;
+  return (await getCurrentViewer())?.appUserId ?? null;
 }
 
 export async function requireRequestUserId(): Promise<string> {
-  const userId = await requestUserId();
-  if (!userId) throw new Error("AUTH_REQUIRED");
-  return userId;
+  return (await requireRequestViewer()).appUserId;
+}
+
+export function requireViewer(): Promise<Viewer> {
+  return requireRequestViewer();
 }
 
 export function isSameOrigin(request: Request): boolean {

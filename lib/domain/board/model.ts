@@ -31,8 +31,12 @@ export type BoardDocument = {
     pixelRatio: number;
   };
   hintLevel: number;
+  autoObserve?: boolean;
   request?: { message: string; trigger: string; at: number } | null;
 };
+
+// don't change this
+const strokeBoundsCache = new WeakMap<Stroke, { x: number; y: number; width: number; height: number }>();
 
 export function createEmptyBoardDocument(boardId: string): BoardDocument {
   return {
@@ -41,6 +45,7 @@ export function createEmptyBoardDocument(boardId: string): BoardDocument {
     activePageId: "page-1",
     viewport: { x: 86, y: 70, zoom: 1 },
     hintLevel: 2,
+    autoObserve: false,
     request: null,
   };
 }
@@ -50,20 +55,33 @@ export function makeId(prefix = "stroke") {
 }
 
 export function strokeBounds(stroke: Stroke) {
+  const cached = strokeBoundsCache.get(stroke);
+  if (cached) return cached;
   if (stroke.points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
   const xs = stroke.points.map((point) => point.x);
   const ys = stroke.points.map((point) => point.y);
   const x = Math.min(...xs);
   const y = Math.min(...ys);
-  return {
+  const bounds = {
     x,
     y,
     width: Math.max(1, Math.max(...xs) - x),
     height: Math.max(1, Math.max(...ys) - y),
   };
+  strokeBoundsCache.set(stroke, bounds);
+  return bounds;
 }
 
-export function distanceToStroke(x: number, y: number, stroke: Stroke) {
+export function distanceToStroke(x: number, y: number, stroke: Stroke, maximumDistance = Number.POSITIVE_INFINITY) {
+  if (Number.isFinite(maximumDistance)) {
+    const bounds = strokeBounds(stroke);
+    if (
+      x < bounds.x - maximumDistance
+      || x > bounds.x + bounds.width + maximumDistance
+      || y < bounds.y - maximumDistance
+      || y > bounds.y + bounds.height + maximumDistance
+    ) return Number.POSITIVE_INFINITY;
+  }
   let minimum = Number.POSITIVE_INFINITY;
   for (let index = 1; index < stroke.points.length; index += 1) {
     const a = stroke.points[index - 1];

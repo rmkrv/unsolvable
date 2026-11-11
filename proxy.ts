@@ -7,6 +7,7 @@ export default auth.middleware({
     "/",
     "/preview/home",
     "/preview/settings",
+    "/preview/calendar",
     "/api/board",
     "/mcp",
     "/.well-known/oauth-protected-resource",

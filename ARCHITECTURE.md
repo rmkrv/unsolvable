@@ -34,8 +34,14 @@ Runtime providers stay behind replaceable boundaries:
 | --- | --- | --- | --- |
 | Board model | `lib/domain/board/model.ts` | Provider-independent | Same package |
 | Board persistence | `lib/server/boards/board-repository.ts` | Neon PostgreSQL | Same contract, optional extracted API |
-| Product profile and Home insights | `lib/server/users/user-repository.ts` | Neon PostgreSQL | Same contract |
-| Browser board sync | `lib/client/board/board-gateway.ts` | Versioned `/api/board` polling | HTTP bootstrap + Durable Object WebSocket |
+| Account profile | `lib/server/accounts/account-repository.ts` | Neon PostgreSQL | Same contract |
+| Student summaries | `lib/server/students/student-summary-repository.ts` | Neon PostgreSQL | Same contract |
+| Parent links | `lib/server/parents/parent-link-repository.ts` | Neon PostgreSQL | Same contract |
+| Learning calendar | `lib/server/calendar/calendar-repository.ts` | Neon PostgreSQL | Same contract |
+| Google Calendar export | `lib/server/calendar/google-calendar-service.ts` | OAuth 2.0 + Calendar Events API | Same explicit export boundary |
+| Billing ownership and entitlements | `lib/server/billing/billing-repository.ts` | Neon PostgreSQL | Payment-provider adapter behind the billing service |
+| Administration and audit | `lib/server/admin/*` | Neon PostgreSQL | Same internal-only boundary |
+| Browser board sync | `lib/client/board/board-gateway.ts` | Versioned `/api/student/boards/*` polling | HTTP bootstrap + Durable Object WebSocket |
 | Browser recovery | `lib/client/board/local-board-store.ts` | `localStorage` | Keep as offline recovery |
 | AI tool transport | `app/mcp/route.ts` | Provider-neutral Streamable HTTP MCP | Same protocol across compatible clients |
 | Request identity | `lib/server/auth/*` | Neon Auth session | Same provider behind an extracted API if needed |
@@ -47,25 +53,49 @@ Compatibility facades such as `lib/board-model.ts`, `lib/tutor-store.ts`, and `l
 
 ```text
 TutorBoard
+  -> BoardSaveCoordinator
   -> BoardGateway
-  -> /api/board
+  -> /api/student/boards/[boardId]
+  -> role-aware Viewer
   -> board service
   -> BoardRepository
   -> PostgresBoardRepository
   -> Neon PostgreSQL
 ```
 
-The repository maps the Neon Auth subject to an internal application user. Personal workspaces are provisioned idempotently on first save. Workspace and board memberships provide authorization independently from authentication.
+The request boundary resolves the Neon Auth subject to one role-aware application `Viewer`. Domain services and repositories receive only the internal application user ID. Personal workspaces are provisioned idempotently on first save. Workspace and board memberships provide authorization independently from authentication.
 
 Canonical board pages use `/boards/[boardId]`. Browser reads include that explicit board ID, and successful opens upsert `user_board_activity`, so Home recents are per-user rather than reordered by a collaborator's edit. `/boards/current` is only a convenience redirect to the most recently opened authorized board, creating one when the workspace is empty.
 
+`BoardSaveCoordinator` is the client-side concurrency boundary for the current full-document persistence protocol. It does not accept writes until the initial board version is loaded, permits only one write in flight, coalesces queued routine autosaves, preserves explicit snapshot/title/request saves, and pauses on `409` until polling rebases it onto the authoritative version. Routine autosaves persist structured board state without rendering a PNG; explicit AI requests and title changes may attach a bounded snapshot.
+
+Full-document saves are a transitional transport, not the target collaboration model. New synchronization behavior belongs behind the coordinator and gateway boundaries so browser edits can move incrementally to idempotent domain commands with command IDs, server ordering, and replay without coupling that migration to React or Canvas rendering.
+
 ## Account and learning data
 
-Neon Auth owns credentials, sessions, primary email, password changes, and reset tokens. The application database owns `user_profiles`, normalized `billing_accounts`, collaboration records, practice evidence, and derived skill mastery. Profile and Home reads go through `lib/server/users`; React pages never query PostgreSQL directly.
+Neon Auth owns credentials, sessions, primary email, password changes, and reset tokens. The application database owns account roles, `user_profiles`, parent-student links, billing ownership and entitlements, learning-calendar events and export receipts, collaboration records, practice evidence, and derived skill mastery. Profile, billing, calendar, student, parent, and admin reads go through focused services; React pages and route handlers never query PostgreSQL directly.
+
+## Account roles and authorization
+
+Every application account has exactly one role: `student`, `parent`, or `admin`. Public onboarding may select only `student` or `parent`; established role changes and every admin grant or revocation require an audited admin operation. The model has no age, birth-date, minor, consent, or guardianship behavior.
+
+Authorization combines independent dimensions:
+
+1. role capability (`student`, `parent`, or `admin`);
+2. an active parent-student relationship for parent summary access;
+3. resource ownership or membership for billing accounts, boards, and workspaces.
+
+A parent relationship does not grant billing access, and paying for a beneficiary does not grant learning-data access. An active parent-student link grants read, create, and edit access to that student's learning calendar, while pending or revoked links grant none. Parent APIs expose bounded attendance and performance aggregates and the explicitly shared calendar—never raw boards or private tutor conversations. Admins use dedicated `/api/admin/*` endpoints and do not silently bypass customer services.
+
+Calendar events are stored once for the student with UTC timestamps plus an IANA time-zone identifier. Recurrence expansion preserves the local wall-clock time through daylight-saving changes. Students manage their own events; actively linked parents may manage the same records. Google Calendar is an explicit export destination, not a second source of truth: a user connects their own Google account, then exports one occurrence or all study-session occurrences in a selected month. Export receipts make repeated actions update the existing Google event instead of duplicating it. Refresh tokens are encrypted at rest.
+
+Billing is split into `billing_accounts` (owner), `subscriptions` (provider plan state), and `subscription_entitlements` (beneficiary). Only an account owner may manage provider billing details. Entitlement responses never expose provider identifiers or invoices belonging to another user.
 
 Provider-dependent operations remain explicit boundaries: avatar bytes need object storage, billing management needs a selected payment provider, recovery email needs a verified auth factor, and account deletion needs a retention/cancellation policy. The UI does not simulate these operations while those decisions are open.
 
 ## Tutor flow
+
+For local development, `npm run dev:tutor` starts a loopback-only Codex runner and the site. The browser saves its board before dispatching a turn through `lib/client/tutor/tutor-transport.ts`. The runner uses the configured `unsolvable` OAuth MCP connection and passes the explicit board ID; MCP continues to enforce student role and board membership. The runner is not included in the deployed Worker. Ordinary `npm run dev` retains the external-MCP-client workflow. Local readiness reflects runner availability rather than the last MCP access timestamp.
 
 Board actions are provider-independent commands. The MCP integration validates an action, compiles visual actions into board commands, and persists them with the same event-version rules used by browser edits. The browser observes the new version and renders it. The action queue remains only for transient effects such as speech.
 
@@ -73,11 +103,11 @@ The production AI adapter can replace the transport, but it must continue to emi
 
 ## Authentication boundary
 
-Routes use `lib/server/auth/request-identity.ts` instead of reading provider cookies directly. Server-rendered pages use `lib/server/auth/current-user.ts`. Only `lib/server/auth/neon.ts` configures Neon Auth and Cloudflare bindings.
+Routes use `lib/server/auth/viewer-service.ts` instead of reading provider cookies directly. Server-rendered pages resolve the same viewer and enforce their required role before loading data. Only `lib/server/auth/neon.ts` configures Neon Auth and Cloudflare bindings.
 
-Authentication establishes identity. Board ownership and collaboration roles remain separate application authorization checks.
+Authentication establishes identity. Typed policy failures distinguish missing authentication, wrong role, forbidden resources, hidden resources, and conflicts, and map consistently to `401`, `403`, `404`, and `409` API responses.
 
-Development and production use the same provider-neutral MCP authorization path. Codex, Claude, or another compatible client discovers Neon OAuth from protected-resource metadata and obtains an identity token whose audience is the exact MCP URL. PostgreSQL board membership determines effective board rights. The MCP route does not accept browser cookies, local-profile credentials, model-provider keys, or development bypass tokens. An agent acting on behalf of a user is limited by that user's board membership; future elevated agents require a separate principal and an explicit stored grant.
+Development and production use the same provider-neutral MCP authorization path. Codex, Claude, or another compatible client discovers Neon OAuth from protected-resource metadata and obtains an identity token whose audience is the exact MCP URL. The MCP subject resolves to a `student` viewer, and PostgreSQL board membership determines effective board rights. Parent and admin accounts cannot acquire board capabilities through MCP. The route does not accept browser cookies, local-profile credentials, model-provider keys, or development bypass tokens.
 
 ## Testing
 

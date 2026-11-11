@@ -1,13 +1,14 @@
 import { AppShell } from "@/components/app-shell";
 import { SettingsPreview } from "@/components/settings-preview";
-import { requireCurrentUser } from "@/lib/server/auth/current-user";
-import { getUserBilling, getUserProfile } from "@/lib/server/users/user-service";
+import { requireRolePage } from "@/lib/server/auth/viewer-service";
+import { getAccountProfile } from "@/lib/server/accounts/account-service";
+import { getBilling } from "@/lib/server/billing/billing-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfileSettingsPage() {
-  const user = await requireCurrentUser("/settings/profile");
-  const [profile, billing] = await Promise.all([getUserProfile(user), getUserBilling(user)]);
+  const user = await requireRolePage("/settings/profile", "student");
+  const [profile, billing] = await Promise.all([getAccountProfile(user), getBilling(user)]);
   return (
     <AppShell user={user} active="settings" title="Settings">
       <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 xl:px-10">

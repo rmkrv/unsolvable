@@ -1,6 +1,7 @@
 export type StoredBoard = {
   userId: string;
   boardId: string;
+  title: string;
   stateJson: string;
   snapshotDataUrl: string | null;
   eventVersion: number;

@@ -11,13 +11,14 @@ import {
   PrimarySectionSkeleton,
   RecentBoardsSkeleton,
 } from "@/components/home-dashboard-loading";
-import { requireCurrentUser, type AuthenticatedUser } from "@/lib/server/auth/current-user";
+import { requireRolePage } from "@/lib/server/auth/viewer-service";
+import type { Viewer } from "@/lib/server/auth/viewer";
 import { loadHomeOverview, loadRecentBoards } from "@/lib/server/home/dashboard-data";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const user = await requireCurrentUser("/home");
+  const user = await requireRolePage("/home", "student");
 
   return (
     <HomePageFrame user={user}>
@@ -31,30 +32,26 @@ export default async function HomePage() {
 
       <QuickStartSection />
       <Suspense fallback={<RecentBoardsSkeleton />}>
-        <RecentBoardsDashboard userId={user.userId} />
+        <RecentBoardsDashboard user={user} />
       </Suspense>
     </HomePageFrame>
   );
 }
 
-async function PersonalizedHeader({ user }: { user: AuthenticatedUser }) {
-  const { profile } = await loadHomeOverview(user.userId, displayNameFor(user));
+async function PersonalizedHeader({ user }: { user: Viewer }) {
+  const { profile } = await loadHomeOverview(user);
   return <HomeDashboardHeader user={{ ...user, displayName: profile.displayName, fullName: profile.displayName }} />;
 }
 
-async function PrimaryDashboard({ user }: { user: AuthenticatedUser }) {
+async function PrimaryDashboard({ user }: { user: Viewer }) {
   const [recentBoards, { insights }] = await Promise.all([
-    loadRecentBoards(user.userId),
-    loadHomeOverview(user.userId, displayNameFor(user)),
+    loadRecentBoards(user),
+    loadHomeOverview(user),
   ]);
   return <PrimaryHomeSection recentBoards={recentBoards} insights={insights} />;
 }
 
-async function RecentBoardsDashboard({ userId }: { userId: string }) {
-  const recentBoards = await loadRecentBoards(userId);
+async function RecentBoardsDashboard({ user }: { user: Viewer }) {
+  const recentBoards = await loadRecentBoards(user);
   return <RecentBoardsHomeCard recentBoards={recentBoards} />;
-}
-
-function displayNameFor(user: AuthenticatedUser) {
-  return user.fullName || user.displayName;
 }

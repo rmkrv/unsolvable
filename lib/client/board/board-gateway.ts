@@ -1,9 +1,30 @@
 import type { BoardDocument, Page } from "@/lib/domain/board/model";
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 
+export type BoardSaveResult = { eventVersion: number; updatedAt: number };
+export type BoardSaveDraft = {
+  document: BoardDocument;
+  snapshotDataUrl?: string;
+  title?: string;
+};
+export type BoardSaveRequest = BoardSaveDraft & { expectedVersion: number };
+
+export class BoardGatewayError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "BoardGatewayError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export type SharedBoardResponse = {
   board: {
     boardId: string;
+    title: string;
     state?: Partial<BoardDocument> & { pages?: Page[] };
     eventVersion: number;
     lastMcpAt: number | null;
@@ -13,28 +34,36 @@ export type SharedBoardResponse = {
 };
 
 export interface BoardGateway {
-  read(boardId: string, after: number): Promise<SharedBoardResponse>;
-  save(document: BoardDocument, snapshotDataUrl?: string, expectedVersion?: number): Promise<{ eventVersion: number; updatedAt: number }>;
+  read(boardId: string, after: number, options?: { includeBoard?: boolean }): Promise<SharedBoardResponse>;
+  save(request: BoardSaveRequest): Promise<BoardSaveResult>;
 }
 
 async function jsonOrError<T>(response: Response, fallback: string): Promise<T> {
-  const payload = await response.json() as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error || fallback);
+  const payload = await response.json() as T & { error?: string | { code?: string; message?: string } };
+  const message = typeof payload.error === "string" ? payload.error : payload.error?.message;
+  const code = typeof payload.error === "object" ? payload.error?.code : undefined;
+  if (!response.ok) throw new BoardGatewayError(message || fallback, response.status, code);
   return payload;
 }
 
 export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGateway {
   return {
-    async read(boardId, after) {
+    async read(boardId, after, { includeBoard = true } = {}) {
       const params = new URLSearchParams({ boardId, after: String(after) });
-      const response = await fetcher(`/api/board?${params}`, { cache: "no-store" });
-      return jsonOrError<SharedBoardResponse>(response, "Shared board unavailable");
+      const boardRequest = includeBoard
+        ? fetcher(`/api/student/boards/${encodeURIComponent(boardId)}`, { cache: "no-store" })
+            .then((response) => jsonOrError<{ board: SharedBoardResponse["board"] }>(response, "Shared board unavailable"))
+        : Promise.resolve({ board: null });
+      const actionsRequest = fetcher(`/api/student/boards/${encodeURIComponent(boardId)}/actions?${params}`, { cache: "no-store" })
+        .then((response) => jsonOrError<{ actions: SharedBoardResponse["actions"] }>(response, "Board actions unavailable"));
+      const [boardPayload, actionsPayload] = await Promise.all([boardRequest, actionsRequest]);
+      return { board: boardPayload.board, actions: actionsPayload.actions };
     },
-    async save(document, snapshotDataUrl, expectedVersion) {
-      const response = await fetcher("/api/board", {
+    async save({ document, snapshotDataUrl, expectedVersion, title }) {
+      const response = await fetcher(`/api/student/boards/${encodeURIComponent(document.boardId)}`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ boardId: document.boardId, state: document, snapshotDataUrl, expectedVersion }),
+        body: JSON.stringify({ state: document, snapshotDataUrl: snapshotDataUrl ?? null, expectedVersion, title }),
       });
       return jsonOrError<{ eventVersion: number; updatedAt: number }>(response, "Could not sync the shared board.");
     },

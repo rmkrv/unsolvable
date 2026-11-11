@@ -2,10 +2,12 @@ import Link from "next/link";
 import {
   Bell,
   BookOpen,
+  CalendarDays,
   ChevronDown,
   CircleUserRound,
   Home,
   LayoutGrid,
+  LibraryBig,
   LogOut,
   Menu as MenuIcon,
   Settings,
@@ -14,7 +16,6 @@ import {
 } from "lucide-react";
 import { Brand } from "@/components/brand";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -24,7 +25,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Progress } from "@/components/ui/progress";
 import { PendingLink } from "@/components/pending-link";
 import {
   Sheet,
@@ -32,19 +32,23 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import type { AuthenticatedUser } from "@/lib/server/auth/current-user";
+import type { Viewer } from "@/lib/server/auth/viewer";
 
-export type AppSection = "home" | "practice" | "weak-spots" | "friends" | "boards" | "settings";
+type ShellUser = Pick<Viewer, "displayName" | "email" | "fullName">;
+
+export type AppSection = "home" | "practice" | "topics" | "calendar" | "weak-spots" | "friends" | "boards" | "settings";
 
 const navigation = [
   { id: "home" as const, label: "Home", href: "/home", icon: Home },
   { id: "practice" as const, label: "Practice", href: "/boards/current", icon: BookOpen },
+  { id: "topics" as const, label: "Topics", href: "/topics", icon: LibraryBig },
+  { id: "calendar" as const, label: "Schedule", href: "/calendar", icon: CalendarDays },
   { id: "weak-spots" as const, label: "Weak spots", href: "/weak-spots", icon: Target },
   { id: "friends" as const, label: "Friends", href: "/friends", icon: Users },
   { id: "boards" as const, label: "Boards", href: "/boards", icon: LayoutGrid },
 ];
 
-function initials(user: AuthenticatedUser) {
+function initials(user: ShellUser) {
   const source = user.fullName || user.email;
   return source
     .split(/[\s@._-]+/)
@@ -54,13 +58,13 @@ function initials(user: AuthenticatedUser) {
     .join("") || "U";
 }
 
-export function AppShell({
+export function StudentShell({
   user,
   active,
   title,
   children,
 }: {
-  user: AuthenticatedUser;
+  user: ShellUser;
   active: AppSection;
   title: string;
   children: React.ReactNode;
@@ -90,14 +94,14 @@ export function AppShell({
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="icon" aria-label="Notifications are not available yet" title="Notifications are not available yet" disabled><Bell /></Button>
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+              <DropdownMenuTrigger asChild id="student-account-menu-trigger">
                 <Button variant="ghost" className="h-10 gap-2 px-2 sm:px-3">
                   <Avatar><AvatarFallback className="bg-foreground text-background">{initials(user)}</AvatarFallback></Avatar>
                   <span className="hidden max-w-36 truncate sm:block">{user.displayName}</span>
                   <ChevronDown className="hidden text-muted-foreground sm:block" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuContent align="end" className="w-60" aria-labelledby="student-account-menu-trigger">
                 <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{user.email}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild><Link href="/settings/profile"><Settings />Settings</Link></DropdownMenuItem>
@@ -109,7 +113,7 @@ export function AppShell({
 
         <main className="app-page-enter min-w-0 pb-24 lg:pb-8">{children}</main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t border-border bg-background/95 px-2 backdrop-blur-xl lg:hidden" aria-label="Primary navigation">
+        <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-7 border-t border-border bg-background/95 px-1 backdrop-blur-xl lg:hidden" aria-label="Primary navigation">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
@@ -125,6 +129,8 @@ export function AppShell({
     </div>
   );
 }
+
+export const AppShell = StudentShell;
 
 function SidebarContent({ active }: { active: AppSection }) {
   return (
@@ -146,11 +152,6 @@ function SidebarContent({ active }: { active: AppSection }) {
       </nav>
 
       <div className="mt-auto space-y-3 pt-8">
-        <div className="rounded-lg border border-border bg-background p-4">
-          <div className="flex items-center justify-between gap-3"><span className="text-xs font-medium">Learning rhythm</span><Badge variant="secondary">On track</Badge></div>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">Two focused sessions this week. One more builds momentum.</p>
-          <Progress className="mt-3 h-1.5" value={66} />
-        </div>
         <Link href="/settings/profile" className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-[color,background-color,transform,box-shadow] duration-200 ease-out active:scale-[0.98] motion-reduce:transform-none motion-reduce:transition-none ${active === "settings" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:bg-background/70 hover:text-foreground"}`}>
           <CircleUserRound size={18} />Account settings
         </Link>

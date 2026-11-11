@@ -1,0 +1,12 @@
+export const mathTopics = [
+  { slug: "pre-algebra", name: "Pre-Algebra / Foundational Math", description: "Build confidence with numbers, ratios, and basic equations.", subtopics: ["The Number System (Integers, Fractions, Decimals, Percentages)", "Ratios, Rates & Proportional Relationships", "Expressions & Basic Linear Equations"] },
+  { slug: "algebra", name: "Algebra (1 & 2)", description: "Work with equations, functions, polynomials, and graphs.", subtopics: ["Linear Equations, Inequalities & Graphs", "Systems of Linear Equations & Inequalities", "Introduction to Functions (Domain, Range, Notation)", "Polynomial Operations & Factoring Quadratics", "Quadratic Functions & The Quadratic Formula", "Rational & Radical Expressions/Functions", "Logarithmic & Exponential Functions"] },
+  { slug: "geometry", name: "Geometry", description: "Study shapes, transformations, measurements, and spatial relationships.", subtopics: ["Congruence, Similarity & Geometric Transformations", "Properties of Triangles, Quadrilaterals & Polygons", "Right Triangle Trigonometry (SOH-CAH-TOA)", "Circle Properties, Arcs, Sectors & Equations", "Area, Surface Area & Volume of 2D/3D Shapes"] },
+  { slug: "trigonometry-pre-calculus", name: "Trigonometry & Pre-Calculus", description: "Explore angles, vectors, sequences, and advanced functions.", subtopics: ["The Unit Circle & Radian Measures", "Trigonometric Identities & Graphing Trig Functions", "Vectors & Matrices (Operations & Transformations)", "Conic Sections (Parabolas, Circles, Ellipses, Hyperbolas)", "Arithmetic & Geometric Sequences & Series"] },
+  { slug: "calculus", name: "Calculus", description: "Understand change and accumulation through derivatives and integrals.", subtopics: ["Limits & Continuity (Graphical & Algebraic)", "Derivatives (Rules, Rates of Change, Chain Rule)", "Applications of Derivatives (Optimization, Max/Min)", "Integrals (Antiderivatives, Fundamental Theorem of Calculus)"] },
+  { slug: "probability-statistics", name: "Probability & Statistics", description: "Analyze data, uncertainty, distributions, and chance.", subtopics: ["Descriptive Statistics (Mean, Median, Standard Deviation)", "Probability Mechanics (Independent/Dependent, Combinatorics)", "Data Distributions (Normal & Binomial Distributions)"] },
+] as const;
+
+export function findMathTopic(slug: string) {
+  return mathTopics.find((topic) => topic.slug === slug);
+}

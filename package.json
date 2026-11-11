@@ -6,6 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "dev:tutor": "node scripts/dev-tutor.mjs",
+    "setup:google-calendar": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/configure-google-calendar.ps1",
     "install:ci": "node scripts/install-ci.mjs",
     "dev": "node scripts/run-framework.mjs dev",
     "build": "node scripts/run-framework.mjs build",
@@ -48,8 +50,8 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "4.20260515.1",
+    "@cloudflare/vite-plugin": "1.68.0",
+    "@cloudflare/workers-types": "5.20261110.1",
     "@neon/config": "^1.12.1",
     "@tailwindcss/postcss": "4.2.1",
     "@types/node": "22.19.19",
@@ -69,7 +71,7 @@
     "typescript": "5.9.3",
     "vinext": "1.0.0-beta.5",
     "vite": "8.0.13",
-    "wrangler": "4.92.0"
+    "wrangler": "4.160.0"
   },
   "type": "module",
   "overrides": {

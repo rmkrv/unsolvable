@@ -21,9 +21,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { AuthenticatedUser } from "@/lib/server/auth/current-user";
+import type { Viewer } from "@/lib/server/auth/viewer";
 import type { BoardSummary } from "@/lib/server/boards/board-repository";
-import type { HomeInsights } from "@/lib/server/users/user-repository";
+import type { StudentHomeInsights as HomeInsights } from "@/lib/server/students/student-summary-repository";
+
+type HomeUser = Pick<Viewer, "displayName" | "email" | "fullName">;
 
 const previewBoards: BoardSummary[] = [
   { boardId: "preview-limits", title: "Limits and continuity", subject: "Calculus", lastOpenedAt: Date.now() - 720_000, updatedAt: Date.now() - 720_000, eventVersion: 4 },
@@ -43,7 +45,7 @@ export function HomeDashboard({
   insights = previewInsights,
   isPreview = true,
 }: {
-  user: AuthenticatedUser;
+  user: HomeUser;
   recentBoards?: BoardSummary[];
   insights?: HomeInsights;
   isPreview?: boolean;
@@ -58,7 +60,7 @@ export function HomeDashboard({
   );
 }
 
-export function HomePageFrame({ user, children }: { user: AuthenticatedUser; children: React.ReactNode }) {
+export function HomePageFrame({ user, children }: { user: HomeUser; children: React.ReactNode }) {
   return (
     <AppShell user={user} active="home" title="Home">
       <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 xl:px-10">
@@ -68,7 +70,7 @@ export function HomePageFrame({ user, children }: { user: AuthenticatedUser; chi
   );
 }
 
-export function HomeDashboardHeader({ user, isPreview = false }: { user: AuthenticatedUser; isPreview?: boolean }) {
+export function HomeDashboardHeader({ user, isPreview = false }: { user: HomeUser; isPreview?: boolean }) {
   const firstName = (user.fullName || user.displayName).split(/[\s@]/)[0];
   const dateLabel = new Intl.DateTimeFormat("en", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
 

@@ -23,13 +23,14 @@ test("HTTP board gateway owns board route serialization", async () => {
     return Response.json(
       init?.method === "PUT"
         ? { eventVersion: 4, updatedAt: 123 }
-        : { board: null, actions: [] },
+        : input.includes("/actions?") ? { actions: [] } : { board: null },
     );
   };
   const gateway = createHttpBoardGateway(fetcher);
 
   assert.deepEqual(await gateway.read("board-1", 9), { board: null, actions: [] });
-  assert.equal(requests[0].input, "/api/board?boardId=board-1&after=9");
+  assert.equal(requests[0].input, "/api/student/boards/board-1");
+  assert.equal(requests[1].input, "/api/student/boards/board-1/actions?boardId=board-1&after=9");
 
   const document = {
     boardId: "board-1",
@@ -37,10 +38,49 @@ test("HTTP board gateway owns board route serialization", async () => {
     activePageId: "page-1",
     viewport: { x: 0, y: 0, zoom: 1 },
     hintLevel: 2,
+    autoObserve: false,
   };
-  assert.deepEqual(await gateway.save(document, "data:image/png;base64,AA==", 3), { eventVersion: 4, updatedAt: 123 });
-  const body = JSON.parse(requests[1].init.body);
-  assert.equal(body.boardId, "board-1");
+  assert.deepEqual(await gateway.save({
+    document,
+    snapshotDataUrl: "data:image/png;base64,AA==",
+    expectedVersion: 0,
+    title: "Renamed board",
+  }), { eventVersion: 4, updatedAt: 123 });
+  const body = JSON.parse(requests[2].init.body);
+  assert.equal(requests[2].input, "/api/student/boards/board-1");
+  assert.equal("boardId" in body, false);
   assert.deepEqual(body.state, document);
-  assert.equal(body.expectedVersion, 3);
+  assert.equal(body.expectedVersion, 0);
+  assert.equal(body.title, "Renamed board");
+});
+
+test("HTTP board gateway preserves API status and error code", async () => {
+  const { BoardGatewayError, createHttpBoardGateway } = await importTypeScript("lib/client/board/board-gateway.ts");
+  const gateway = createHttpBoardGateway(async () => Response.json(
+    { error: { code: "version_conflict", message: "Board changed elsewhere." } },
+    { status: 409 },
+  ));
+
+  await assert.rejects(
+    gateway.save({
+      document: { boardId: "board-1", pages: [], activePageId: "page-1", viewport: { x: 0, y: 0, zoom: 1 }, hintLevel: 2, autoObserve: false },
+      expectedVersion: 2,
+    }),
+    (error) => error instanceof BoardGatewayError && error.status === 409 && error.code === "version_conflict",
+  );
+});
+
+test("HTTP board gateway can poll actions without downloading the board", async () => {
+  const { createHttpBoardGateway } = await importTypeScript("lib/client/board/board-gateway.ts");
+  const requests = [];
+  const gateway = createHttpBoardGateway(async (input) => {
+    requests.push(input);
+    return Response.json({ actions: [{ id: 12, value: { type: "speak", speech: "Ready" } }] });
+  });
+
+  const result = await gateway.read("board-1", 11, { includeBoard: false });
+
+  assert.equal(result.board, null);
+  assert.equal(result.actions.length, 1);
+  assert.deepEqual(requests, ["/api/student/boards/board-1/actions?boardId=board-1&after=11"]);
 });

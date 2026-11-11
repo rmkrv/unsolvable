@@ -1,44 +1,28 @@
 import { NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
-import { z } from "zod";
-import { HOME_CACHE_TAG } from "@/lib/server/home/dashboard-data";
-import { getCurrentUser } from "@/lib/server/auth/current-user";
-import { isSameOrigin } from "@/lib/server/auth/request-identity";
-import { getUserBilling, getUserProfile, updateUserProfile } from "@/lib/server/users/user-service";
+import { PATCH as patchProfile } from "@/app/api/account/profile/route";
+import { getAccountProfile } from "@/lib/server/accounts/account-service";
+import { requireRequestViewer } from "@/lib/server/auth/viewer-service";
+import { getBilling } from "@/lib/server/billing/billing-service";
+import { deprecationHeaders, routeError } from "@/lib/server/http/route-utils";
 
 export const dynamic = "force-dynamic";
 
-const updateProfileSchema = z.object({
-  displayName: z.string().trim().min(1).max(100),
-  isDiscoverable: z.boolean(),
-});
-
 export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Sign in to view your profile." }, { status: 401 });
   try {
-    const [profile, billing] = await Promise.all([getUserProfile(user), getUserBilling(user)]);
-    return NextResponse.json({ profile, billing, email: user.email });
-  } catch {
-    return NextResponse.json({ error: "Could not load your profile." }, { status: 500 });
+    const viewer = await requireRequestViewer();
+    const [profile, billing] = await Promise.all([getAccountProfile(viewer), getBilling(viewer)]);
+    return deprecated(NextResponse.json({ profile, billing, email: viewer.email }));
+  } catch (error) {
+    return deprecated(routeError(error, "Could not load the profile."));
   }
 }
 
 export async function PATCH(request: Request) {
-  if (!isSameOrigin(request)) {
-    return NextResponse.json({ error: "Cross-origin write rejected." }, { status: 403 });
-  }
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: "Sign in to update your profile." }, { status: 401 });
-  const parsed = updateProfileSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Enter a display name between 1 and 100 characters." }, { status: 400 });
-  }
-  try {
-    const profile = await updateUserProfile(user, parsed.data);
-    revalidateTag(HOME_CACHE_TAG, "max");
-    return NextResponse.json({ profile });
-  } catch {
-    return NextResponse.json({ error: "Could not save your profile." }, { status: 500 });
-  }
+  return deprecated(await patchProfile(request));
+}
+
+function deprecated(response: Response) {
+  for (const [key, value] of Object.entries(deprecationHeaders)) response.headers.set(key, value);
+  response.headers.set("Link", "</api/account>; rel=\"successor-version\"");
+  return response;
 }

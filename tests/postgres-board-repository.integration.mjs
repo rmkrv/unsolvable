@@ -17,10 +17,15 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
   const boardId = `board-${randomUUID()}`;
 
   try {
-    assert.equal(await repository.readForUser(authSubject), null);
+    const [user] = await db.insert(schema.appUsers).values({ authSubject }).returning({ id: schema.appUsers.id });
+    const [otherUser] = await db.insert(schema.appUsers).values({ authSubject: otherSubject }).returning({ id: schema.appUsers.id });
+    assert.ok(user?.id && otherUser?.id);
+    const userId = user.id;
+    const otherUserId = otherUser.id;
+    assert.equal(await repository.readForUser(userId), null);
 
     const first = await repository.saveForUser({
-      userId: authSubject,
+      userId,
       boardId,
       stateJson: JSON.stringify({ boardId, pages: [] }),
       snapshotDataUrl: null,
@@ -29,57 +34,60 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
     assert.equal(first.eventVersion, 1);
 
     const second = await repository.saveForUser({
-      userId: authSubject,
+      userId,
       boardId,
       stateJson: JSON.stringify({ boardId, pages: [{ id: "page-1" }] }),
       snapshotDataUrl: "data:image/png;base64,AA==",
     });
     assert.equal(second.eventVersion, 2);
 
-    const stored = await repository.readForUser(authSubject);
+    const stored = await repository.readForUser(userId);
     assert.equal(stored?.boardId, boardId);
+    assert.equal(stored?.title, "Integration board");
     assert.equal(stored?.eventVersion, 2);
     assert.equal(stored?.snapshotDataUrl, null, "ordinary reads should not transfer the PNG snapshot");
     assert.deepEqual(JSON.parse(stored?.stateJson ?? "{}").pages, [{ id: "page-1" }]);
 
-    const withSnapshot = await repository.readForUser(authSubject, boardId, true);
+    const withSnapshot = await repository.readForUser(userId, boardId, true);
     assert.equal(withSnapshot?.snapshotDataUrl, "data:image/png;base64,AA==");
 
-    assert.equal(await repository.markOpened(authSubject, boardId), true);
-    const recent = await repository.listForUser(authSubject, 5);
+    assert.equal(await repository.markOpened(userId, boardId), true);
+    const recent = await repository.listForUser(userId, 5);
     assert.equal(recent.length, 1);
     assert.equal(recent[0].title, "Integration board");
     assert.equal(recent[0].boardId, boardId);
 
     const third = await repository.updateForUser({
-      userId: authSubject,
+      userId,
       boardId,
       expectedVersion: 2,
       stateJson: JSON.stringify({ boardId, pages: [{ id: "page-2" }] }),
       snapshotDataUrl: null,
+      title: "Renamed board",
     });
     assert.equal(third?.eventVersion, 3);
+    assert.equal((await repository.readForUser(userId, boardId))?.title, "Renamed board");
     assert.equal(await repository.updateForUser({
-      userId: authSubject,
+      userId,
       boardId,
       expectedVersion: 2,
       stateJson: JSON.stringify({ boardId, pages: [] }),
       snapshotDataUrl: null,
     }), null, "stale writers must not overwrite a newer board version");
 
-    const connectedAt = await repository.markTutorConnected(authSubject, boardId);
+    const connectedAt = await repository.markTutorConnected(userId, boardId);
     assert.ok(connectedAt > 0);
 
-    const actionId = await repository.enqueueTutorAction(authSubject, boardId, { type: "say", text: "Checked." });
+    const actionId = await repository.enqueueTutorAction(userId, boardId, { type: "say", text: "Checked." });
     assert.ok(actionId);
-    const actions = await repository.readTutorActions(authSubject, boardId, 0);
+    const actions = await repository.readTutorActions(userId, boardId, 0);
     assert.equal(actions.length, 1);
     assert.deepEqual(JSON.parse(actions[0].actionJson), { type: "say", text: "Checked." });
-    assert.deepEqual(await repository.readTutorActions(authSubject, boardId, actionId), []);
+    assert.deepEqual(await repository.readTutorActions(userId, boardId, actionId), []);
 
-    assert.equal(await repository.readForUser(otherSubject), null);
-    assert.equal(await repository.markOpened(otherSubject, boardId), false);
-    assert.equal(await repository.enqueueTutorAction(otherSubject, boardId, { type: "say" }), null);
+    assert.equal(await repository.readForUser(otherUserId), null);
+    assert.equal(await repository.markOpened(otherUserId, boardId), false);
+    assert.equal(await repository.enqueueTutorAction(otherUserId, boardId, { type: "say" }), null);
   } finally {
     await db.delete(schema.appUsers).where(eq(schema.appUsers.authSubject, authSubject));
     await db.delete(schema.appUsers).where(eq(schema.appUsers.authSubject, otherSubject));

@@ -1,8 +1,10 @@
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
+  pgEnum,
   pgTable,
   primaryKey,
   serial,
@@ -11,15 +13,32 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
 
+export const accountRole = pgEnum("account_role", ["student", "parent", "admin"]);
+export const parentStudentLinkStatus = pgEnum("parent_student_link_status", [
+  "pending",
+  "active",
+  "revoked",
+]);
+export const calendarEventKind = pgEnum("calendar_event_kind", ["study_session", "deadline"]);
+export const calendarEventStatus = pgEnum("calendar_event_status", ["scheduled", "completed", "cancelled"]);
+export const calendarRecurrenceFrequency = pgEnum("calendar_recurrence_frequency", [
+  "daily",
+  "weekly",
+  "monthly",
+]);
+
 export const appUsers = pgTable("app_users", {
   id: uuid("id").primaryKey().defaultRandom(),
   authSubject: text("auth_subject").notNull().unique(),
+  role: accountRole("role").notNull().default("student"),
+  roleConfirmedAt: timestamp("role_confirmed_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -37,17 +56,187 @@ export const userProfiles = pgTable("user_profiles", {
   ...timestamps,
 });
 
-export const billingAccounts = pgTable("billing_accounts", {
+export const parentStudentLinks = pgTable(
+  "parent_student_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    parentUserId: uuid("parent_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    status: parentStudentLinkStatus("status").notNull().default("pending"),
+    invitedByUserId: uuid("invited_by_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    invitedAt: timestamp("invited_at", { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("parent_student_links_pair_uidx").on(table.parentUserId, table.studentUserId),
+    index("parent_student_links_parent_status_idx").on(table.parentUserId, table.status),
+    index("parent_student_links_student_status_idx").on(table.studentUserId, table.status),
+    check("parent_student_links_distinct_users_check", sql`${table.parentUserId} <> ${table.studentUserId}`),
+  ],
+);
+
+export const calendarEvents = pgTable(
+  "calendar_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    studentUserId: uuid("student_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    updatedByUserId: uuid("updated_by_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    kind: calendarEventKind("kind").notNull().default("study_session"),
+    status: calendarEventStatus("status").notNull().default("scheduled"),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    timeZone: text("time_zone").notNull().default("UTC"),
+    recurrenceFrequency: calendarRecurrenceFrequency("recurrence_frequency"),
+    recurrenceInterval: integer("recurrence_interval").notNull().default(1),
+    recurrenceEndsAt: timestamp("recurrence_ends_at", { withTimezone: true }),
+    reminderMinutes: integer("reminder_minutes").notNull().default(30),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    planGroupId: uuid("plan_group_id"),
+    planStartsAt: timestamp("plan_starts_at", { withTimezone: true }),
+    planEndsAt: timestamp("plan_ends_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("calendar_events_student_starts_idx").on(table.studentUserId, table.startsAt),
+    index("calendar_events_student_recurrence_idx").on(
+      table.studentUserId,
+      table.recurrenceEndsAt,
+    ),
+    index("calendar_events_plan_group_idx").on(table.planGroupId),
+    check("calendar_events_time_order_check", sql`${table.endsAt} > ${table.startsAt}`),
+    check(
+      "calendar_events_recurrence_interval_check",
+      sql`${table.recurrenceInterval} >= 1 AND ${table.recurrenceInterval} <= 30`,
+    ),
+    check(
+      "calendar_events_reminder_minutes_check",
+      sql`${table.reminderMinutes} >= 0 AND ${table.reminderMinutes} <= 40320`,
+    ),
+  ],
+);
+
+export const googleCalendarConnections = pgTable("google_calendar_connections", {
   userId: uuid("user_id")
     .primaryKey()
     .references(() => appUsers.id, { onDelete: "cascade" }),
-  plan: text("plan").notNull().default("free"),
-  status: text("status").notNull().default("active"),
-  providerCustomerId: text("provider_customer_id").unique(),
-  providerSubscriptionId: text("provider_subscription_id").unique(),
-  renewsAt: timestamp("renews_at", { withTimezone: true }),
+  encryptedRefreshToken: text("encrypted_refresh_token").notNull(),
+  grantedScopes: text("granted_scopes").notNull(),
+  connectedAt: timestamp("connected_at", { withTimezone: true }).notNull().defaultNow(),
   ...timestamps,
 });
+
+export const calendarEventExports = pgTable(
+  "calendar_event_exports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    calendarEventId: uuid("calendar_event_id")
+      .notNull()
+      .references(() => calendarEvents.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    occurrenceStart: timestamp("occurrence_start", { withTimezone: true }).notNull(),
+    googleCalendarId: text("google_calendar_id").notNull().default("primary"),
+    googleEventId: text("google_event_id").notNull(),
+    exportedAt: timestamp("exported_at", { withTimezone: true }).notNull().defaultNow(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("calendar_event_exports_occurrence_uidx").on(
+      table.calendarEventId,
+      table.userId,
+      table.occurrenceStart,
+    ),
+    index("calendar_event_exports_user_idx").on(table.userId, table.exportedAt),
+  ],
+);
+
+export const billingAccounts = pgTable(
+  "billing_accounts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    providerCustomerId: text("provider_customer_id").unique(),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("billing_accounts_owner_user_uidx").on(table.ownerUserId)],
+);
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    billingAccountId: uuid("billing_account_id")
+      .notNull()
+      .references(() => billingAccounts.id, { onDelete: "cascade" }),
+    providerSubscriptionId: text("provider_subscription_id").unique(),
+    plan: text("plan").notNull().default("free"),
+    status: text("status").notNull().default("active"),
+    renewsAt: timestamp("renews_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [uniqueIndex("subscriptions_billing_account_uidx").on(table.billingAccountId)],
+);
+
+export const subscriptionEntitlements = pgTable(
+  "subscription_entitlements",
+  {
+    subscriptionId: uuid("subscription_id")
+      .notNull()
+      .references(() => subscriptions.id, { onDelete: "cascade" }),
+    beneficiaryUserId: uuid("beneficiary_user_id")
+      .notNull()
+      .references(() => appUsers.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("active"),
+    ...timestamps,
+  },
+  (table) => [
+    primaryKey({ columns: [table.subscriptionId, table.beneficiaryUserId] }),
+    index("subscription_entitlements_beneficiary_status_idx").on(
+      table.beneficiaryUserId,
+      table.status,
+    ),
+  ],
+);
+
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    actorUserId: uuid("actor_user_id").references(() => appUsers.id, { onDelete: "set null" }),
+    targetUserId: uuid("target_user_id").references(() => appUsers.id, { onDelete: "set null" }),
+    action: text("action").notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: text("target_id").notNull(),
+    metadata: jsonb("metadata").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("audit_events_created_idx").on(table.createdAt),
+    index("audit_events_actor_created_idx").on(table.actorUserId, table.createdAt),
+    index("audit_events_target_created_idx").on(table.targetUserId, table.createdAt),
+  ],
+);
 
 export const workspaces = pgTable("workspaces", {
   id: uuid("id").primaryKey().defaultRandom(),

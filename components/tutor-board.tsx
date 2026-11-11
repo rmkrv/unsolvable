@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { createTutorTransport } from "@/lib/client/tutor/tutor-transport";
 import {
   ArrowUpRight,
   Cable,
@@ -47,7 +48,9 @@ import {
 } from "@/lib/domain/board/operations";
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
-import { renderBoardCanvas } from "@/lib/client/board/canvas-renderer";
+import { BoardSaveCoordinator, type BoardSaveKind } from "@/lib/client/board/board-save-coordinator";
+import { invalidateBoardCanvas, renderBoardCanvas } from "@/lib/client/board/canvas-renderer";
+import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
 import {
   readActionCursor,
   readBoardColor,
@@ -99,6 +102,10 @@ type SpeechRecognitionWindow = Window & {
 const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
 const boardGateway = createHttpBoardGateway();
+
+const tutorBridgeUrl = import.meta.env.VITE_TUTOR_BRIDGE_URL;
+const tutorTransport = createTutorTransport(tutorBridgeUrl);
+const localTutor = tutorTransport.mode === "local";
 
 function agentAvailable(state: BridgeState) {
   return state === "authorized";
@@ -154,9 +161,18 @@ function worldPoint(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCa
   };
 }
 
-export default function TutorBoard({ displayName, boardId }: { displayName: string; boardId: string }) {
+export default function TutorBoard({
+  displayName,
+  boardId,
+  initialTitle,
+}: {
+  displayName: string;
+  boardId: string;
+  initialTitle: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [pages, setPages] = useState<Page[]>([INITIAL_PAGE]);
   const [activePageId, setActivePageId] = useState("page-1");
   const [view, setView] = useState<Viewport>({ x: 86, y: 70, zoom: 1 });
@@ -168,11 +184,15 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget>("codex");
   const [hintLevel, setHintLevel] = useState(2);
-  const [autoObserve, setAutoObserve] = useState(true);
+  const [autoObserve, setAutoObserve] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [toast, setToast] = useState("Draw naturally — Unsolvable will wait for a complete thought.");
   const [pagesOpen, setPagesOpen] = useState(false);
+  const [boardTitle, setBoardTitle] = useState(initialTitle);
+  const [titleDraft, setTitleDraft] = useState(initialTitle);
+  const [isRenamingTitle, setIsRenamingTitle] = useState(false);
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const undoRef = useRef<Page[][]>([]);
   const redoRef = useRef<Page[][]>([]);
   const pagesRef = useRef(pages);
@@ -187,6 +207,8 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   const viewStartRef = useRef(view);
   const gestureSnapshotRef = useRef<Page[] | null>(null);
   const renderFrameRef = useRef<number | null>(null);
+  const pointerMutationFrameRef = useRef<number | null>(null);
+  const pendingPointerMutationRef = useRef<(() => void) | null>(null);
   const animationRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechRef = useRef<ReturnType<typeof createEnglishSpeechController> | null>(null);
@@ -195,6 +217,10 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   const lastActionIdRef = useRef(0);
   const hasActionCursorRef = useRef(false);
   const serverVersionRef = useRef(0);
+  const hintLevelRef = useRef(hintLevel);
+  const autoObserveRef = useRef(autoObserve);
+  const hydrationCompleteRef = useRef(false);
+  const saveCoordinatorRef = useRef<BoardSaveCoordinator | null>(null);
   const applyingRemoteStateRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
   const previousToolRef = useRef<Tool | null>(null);
@@ -221,6 +247,26 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   useEffect(() => {
     activePageIdRef.current = activePageId;
   }, [activePageId]);
+  useEffect(() => {
+    hintLevelRef.current = hintLevel;
+  }, [hintLevel]);
+  useEffect(() => {
+    autoObserveRef.current = autoObserve;
+    if (autoObserve) return;
+    interactionCountRef.current = 0;
+    if (observationTimerRef.current) clearTimeout(observationTimerRef.current);
+    observationTimerRef.current = null;
+  }, [autoObserve]);
+
+  if (saveCoordinatorRef.current == null) {
+    saveCoordinatorRef.current = new BoardSaveCoordinator(boardGateway);
+  }
+
+  useEffect(() => {
+    if (!isRenamingTitle) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isRenamingTitle]);
 
   useEffect(() => {
     const saved = readBoardColor(localStorage);
@@ -241,6 +287,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
         setPages(saved.pages);
         setActivePageId(saved.activePageId);
         setHintLevel(saved.hintLevel);
+        setAutoObserve(saved.autoObserve);
       });
       return () => cancelAnimationFrame(frame);
     } catch {
@@ -252,11 +299,23 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   }, [boardId]);
 
   useEffect(() => {
+    let idleId: number | null = null;
     const timer = setTimeout(() => {
-      writeLocalBoard(localStorage, { pages, activePageId, hintLevel }, boardId);
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [activePageId, boardId, hintLevel, pages]);
+      const persist = () => {
+        idleId = null;
+        writeLocalBoard(localStorage, { pages, activePageId, hintLevel, autoObserve }, boardId);
+      };
+      if ("requestIdleCallback" in window) {
+        idleId = window.requestIdleCallback(persist, { timeout: 1_500 });
+      } else {
+        persist();
+      }
+    }, 750);
+    return () => {
+      clearTimeout(timer);
+      if (idleId !== null && "cancelIdleCallback" in window) window.cancelIdleCallback(idleId);
+    };
+  }, [activePageId, autoObserve, boardId, hintLevel, pages]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -281,6 +340,30 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
       drawCanvas();
     });
   }, [drawCanvas]);
+
+  // don't change this
+  const schedulePointerMutation = useCallback((mutation: () => void) => {
+    pendingPointerMutationRef.current = mutation;
+    if (pointerMutationFrameRef.current !== null) return;
+    pointerMutationFrameRef.current = requestAnimationFrame(() => {
+      pointerMutationFrameRef.current = null;
+      const pending = pendingPointerMutationRef.current;
+      pendingPointerMutationRef.current = null;
+      pending?.();
+    });
+  }, []);
+
+  const flushPointerMutation = useCallback(() => {
+    if (pointerMutationFrameRef.current !== null) cancelAnimationFrame(pointerMutationFrameRef.current);
+    pointerMutationFrameRef.current = null;
+    const pending = pendingPointerMutationRef.current;
+    pendingPointerMutationRef.current = null;
+    pending?.();
+  }, []);
+
+  useEffect(() => () => {
+    if (pointerMutationFrameRef.current !== null) cancelAnimationFrame(pointerMutationFrameRef.current);
+  }, []);
 
   const rebuildDrawingPreview = useCallback(() => {
     const gesture = drawingGestureRef.current;
@@ -348,7 +431,8 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
     setPages((previous) => {
       const next = updater(previous);
       if (next === previous) return previous;
-      undoRef.current.push(copyPages(previous));
+      // don't change this
+      undoRef.current.push(previous);
       if (undoRef.current.length > 80) undoRef.current.shift();
       redoRef.current = [];
       return next;
@@ -358,7 +442,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   const undo = useCallback(() => {
     const snapshot = undoRef.current.pop();
     if (!snapshot) return;
-    redoRef.current.push(copyPages(pagesRef.current));
+    redoRef.current.push(pagesRef.current);
     setPages(snapshot);
     setSelectedIds([]);
   }, []);
@@ -366,7 +450,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   const redo = useCallback(() => {
     const snapshot = redoRef.current.pop();
     if (!snapshot) return;
-    undoRef.current.push(copyPages(pagesRef.current));
+    undoRef.current.push(pagesRef.current);
     setPages(snapshot);
     setSelectedIds([]);
   }, []);
@@ -638,7 +722,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
       const controller = new AbortController();
       animationRef.current = controller;
       setBridgeState("drawing");
-      undoRef.current.push(copyPages(pagesRef.current));
+      undoRef.current.push(pagesRef.current);
       redoRef.current = [];
       if (narration) speak(narration);
 
@@ -771,32 +855,44 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
   );
 
   const syncBoard = useCallback(
-    async (captureSnapshot = false) => {
-      if (!sessionId) return null;
+    async ({
+      captureSnapshot = false,
+      title,
+      kind = "autosave",
+    }: { captureSnapshot?: boolean; title?: string; kind?: BoardSaveKind } = {}) => {
+      if (!sessionId || !hydrationCompleteRef.current) return null;
       const canvas = canvasRef.current;
       const rect = canvas?.getBoundingClientRect();
-      const snapshotDataUrl = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
-      const result = await boardGateway.save({
-        boardId: sessionId,
-        pages: pagesRef.current,
-        activePageId: activePageIdRef.current,
-        viewport: viewRef.current,
-        snapshot: canvas && rect
-          ? {
-              width: canvas.width,
-              height: canvas.height,
-              cssWidth: rect.width,
-              cssHeight: rect.height,
-              pixelRatio: rect.width > 0 ? canvas.width / rect.width : 1,
-            }
-          : undefined,
-        hintLevel,
-        request: requestRef.current,
-      }, snapshotDataUrl, serverVersionRef.current || undefined);
+      const capturedSnapshot = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
+      const snapshotDataUrl = capturedSnapshot && capturedSnapshot.length <= MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH
+        ? capturedSnapshot
+        : undefined;
+      const result = await saveCoordinatorRef.current!.enqueue({
+        document: {
+          boardId: sessionId,
+          pages: pagesRef.current,
+          activePageId: activePageIdRef.current,
+          viewport: viewRef.current,
+          snapshot: canvas && rect
+            ? {
+                width: canvas.width,
+                height: canvas.height,
+                cssWidth: rect.width,
+                cssHeight: rect.height,
+                pixelRatio: rect.width > 0 ? canvas.width / rect.width : 1,
+              }
+            : undefined,
+          hintLevel: hintLevelRef.current,
+          autoObserve: autoObserveRef.current,
+          request: requestRef.current,
+        },
+        snapshotDataUrl,
+        title,
+      }, kind);
       serverVersionRef.current = result.eventVersion;
       return result;
     },
-    [hintLevel, sessionId],
+    [sessionId],
   );
 
   useEffect(() => {
@@ -804,21 +900,31 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
     let polling = false;
     let timer: ReturnType<typeof setInterval> | null = null;
 
-    async function readSharedBoard(boardId: string, restore: boolean) {
-      if (polling) return;
+    async function readSharedBoard(boardId: string, restore: boolean, includeBoard = true) {
+      if (polling) return serverVersionRef.current;
       polling = true;
       try {
-        const payload = await boardGateway.read(boardId, lastActionIdRef.current);
-        if (disposed) return;
-        const remoteVersion = payload.board?.eventVersion ?? 0;
+        const payload = await boardGateway.read(boardId, lastActionIdRef.current, { includeBoard });
+        if (disposed) return serverVersionRef.current;
+        const remoteVersion = payload.board?.eventVersion ?? serverVersionRef.current;
         const remoteChanged = remoteVersion > serverVersionRef.current;
-        if ((restore || remoteChanged) && payload.board?.state?.pages?.length) {
+        const coordinatorBusy = saveCoordinatorRef.current?.getPhase() === "saving";
+        const shouldApplyRemote = restore || (remoteChanged && !coordinatorBusy);
+        if (shouldApplyRemote && payload.board?.state?.pages?.length) {
           applyingRemoteStateRef.current = true;
           setPages(payload.board.state.pages);
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
+          setAutoObserve(payload.board.state.autoObserve === true);
         }
-        serverVersionRef.current = Math.max(serverVersionRef.current, remoteVersion);
+        if (shouldApplyRemote && payload.board?.title) {
+          setBoardTitle(payload.board.title);
+          setTitleDraft(payload.board.title);
+        }
+        if (shouldApplyRemote) {
+          serverVersionRef.current = Math.max(serverVersionRef.current, remoteVersion);
+          if (hydrationCompleteRef.current) saveCoordinatorRef.current?.rebase(remoteVersion);
+        }
         if (restore && !hasActionCursorRef.current && payload.board) {
           // Existing boards predate the stored cursor. Treat their queued actions
           // as historical so a refresh cannot replay old drawing or speech.
@@ -826,8 +932,11 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
           writeActionCursor(localStorage, boardId, lastActionIdRef.current);
           hasActionCursorRef.current = true;
         }
-        const recentlyUsed = Date.now() - Number(payload.board?.lastMcpAt || 0) < 120_000;
-        setBridgeState((current) => current === "drawing" ? current : recentlyUsed ? "authorized" : "offline");
+        if (payload.board || localTutor) {
+          const recentlyUsed = Date.now() - Number(payload.board?.lastMcpAt || 0) < 120_000;
+          const localStatus = localTutor ? await tutorTransport.status() : null;
+          setBridgeState((current) => current === "drawing" || current === "thinking" ? current : (localStatus?.ready ?? recentlyUsed) ? "authorized" : "offline");
+        }
         const processActions = async () => {
           const sharedCursor = readActionCursor(localStorage, boardId);
           if (sharedCursor !== null) {
@@ -845,6 +954,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
             if (lock) await processActions();
           });
         } else await processActions();
+        return remoteVersion;
       } finally {
         polling = false;
       }
@@ -852,17 +962,25 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
 
     async function connect() {
       setBridgeState("connecting");
+      hydrationCompleteRef.current = false;
+      saveCoordinatorRef.current?.stop();
       setSessionId(boardId);
       const storedCursor = readActionCursor(localStorage, boardId);
       hasActionCursorRef.current = storedCursor !== null;
       lastActionIdRef.current = storedCursor ?? 0;
       try {
-        await readSharedBoard(boardId, true);
+        const initialVersion = await readSharedBoard(boardId, true);
         if (!disposed) {
+          serverVersionRef.current = initialVersion;
+          saveCoordinatorRef.current?.start(initialVersion);
+          hydrationCompleteRef.current = true;
           setBridgeState((current) => (current === "authorized" ? current : "offline"));
+          let pollCount = 0;
           timer = setInterval(() => {
-            readSharedBoard(boardId!, false).catch(() => undefined);
-          }, 1_200);
+            if (document.visibilityState !== "visible") return;
+            pollCount += 1;
+            readSharedBoard(boardId!, false, pollCount % 5 === 0).catch(() => undefined);
+          }, 2_000);
         }
       } catch (error) {
         if (!disposed) {
@@ -871,33 +989,38 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
         }
       }
     }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible" && hydrationCompleteRef.current) {
+        readSharedBoard(boardId, false, true).catch(() => undefined);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     connect();
     return () => {
       disposed = true;
+      hydrationCompleteRef.current = false;
+      saveCoordinatorRef.current?.stop();
       if (timer) clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [boardId, handleAction]);
 
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !hydrationCompleteRef.current) return;
     if (applyingRemoteStateRef.current) {
       applyingRemoteStateRef.current = false;
-      const timer = setTimeout(() => {
-        syncBoard(true).catch((error) => {
-          setToast(error instanceof Error ? error.message : "Could not refresh the shared board snapshot.");
-        });
-      }, 100);
-      return () => clearTimeout(timer);
+      return;
     }
     const timer = setTimeout(() => {
-      syncBoard(true).catch((error) => {
+      syncBoard().catch((error) => {
         setToast(error instanceof Error ? error.message : "Could not sync the shared board.");
       });
-    }, 700);
+    }, 1_500);
     return () => clearTimeout(timer);
-  }, [activePageId, hintLevel, pages, sessionId, syncBoard]);
+  }, [activePageId, autoObserve, hintLevel, pages, sessionId, syncBoard]);
 
   const interrupt = useCallback(async () => {
+    if (localTutor && sessionId) await tutorTransport.interrupt(sessionId);
     animationRef.current?.abort();
     speechRef.current?.stop();
     setBridgeState((current) => current === "offline" ? "offline" : sessionId ? "authorized" : "offline");
@@ -912,9 +1035,16 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
       }
       if (bridgeState === "thinking" || bridgeState === "drawing") await interrupt();
       requestRef.current = { message: message.slice(0, 800), trigger, at: Date.now() };
-      setToast("Request shared. Continue in your connected AI chat to let Unsolvable respond.");
+      setToast(localTutor ? "Starting Codex…" : "Request shared. Continue in your connected AI chat to let Unsolvable respond.");
       try {
-        await syncBoard(true);
+        await syncBoard({ captureSnapshot: true, kind: "explicit" });
+        if (localTutor) {
+          setBridgeState("thinking");
+          const result = await tutorTransport.sendTurn({ boardId: sessionId, message, trigger });
+          setToast(result.reply || "Codex finished.");
+          setBridgeState("authorized");
+          return;
+        }
         if (bridgeState === "offline") setConnectionOpen(true);
       } catch (error) {
         setBridgeState("offline");
@@ -967,22 +1097,23 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
       return;
     }
 
+    const hitRadius = 12 / viewRef.current.zoom;
     const hit = [...page.strokes]
       .reverse()
-      .find((stroke) => distanceToStroke(world.x, world.y, stroke) < 12 / viewRef.current.zoom);
+      .find((stroke) => distanceToStroke(world.x, world.y, stroke, hitRadius) < hitRadius);
 
     if (tool === "select" && !gestureTool) {
       if (!hit) setSelectedIds([]);
       else if (!selectedIds.includes(hit.id)) setSelectedIds(strokeSelectionIds(page, hit));
       if (hit) {
         pointerModeRef.current = "move";
-        gestureSnapshotRef.current = copyPages(pagesRef.current);
+        gestureSnapshotRef.current = pagesRef.current;
       }
       return;
     }
     if (tool === "eraser" && !gestureTool) {
       pointerModeRef.current = "erase";
-      gestureSnapshotRef.current = copyPages(pagesRef.current);
+      gestureSnapshotRef.current = pagesRef.current;
       if (hit) {
         const erasedIds = new Set(
           hit.groupId ? page.strokes.filter((stroke) => stroke.groupId === hit.groupId).map((stroke) => stroke.id) : [hit.id],
@@ -1020,11 +1151,12 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
     const canvas = canvasRef.current;
     if (!canvas || !pointerModeRef.current) return;
     if (pointerModeRef.current === "pan") {
-      setView({
+      viewRef.current = {
         ...viewStartRef.current,
         x: viewStartRef.current.x + event.clientX - pointerStartRef.current.screenX,
         y: viewStartRef.current.y + event.clientY - pointerStartRef.current.screenY,
-      });
+      };
+      requestRender();
       return;
     }
     const world = worldPoint(event, canvas, viewRef.current);
@@ -1059,7 +1191,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
       const sources = selectedStrokes(sourcePage, selectedIds);
       const sourceById = new Map(sources.map((stroke) => [stroke.id, stroke]));
       if (!sources.length) return;
-      setPages((previous) =>
+      schedulePointerMutation(() => setPages((previous) =>
         previous.map((page) =>
           page.id === pageId
             ? {
@@ -1077,18 +1209,19 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
               }
             : page,
         ),
-      );
+      ));
       return;
     }
     if (pointerModeRef.current === "erase") {
-      setPages((previous) =>
+      const eraseRadius = 14 / viewRef.current.zoom;
+      schedulePointerMutation(() => setPages((previous) =>
         previous.map((page) =>
           page.id === pageId
             ? {
                 ...page,
                 strokes: (() => {
                   const hitStrokes = page.strokes.filter(
-                    (stroke) => distanceToStroke(world.x, world.y, stroke) < 14 / viewRef.current.zoom,
+                    (stroke) => distanceToStroke(world.x, world.y, stroke, eraseRadius) < eraseRadius,
                   );
                   const ids = new Set(hitStrokes.map((stroke) => stroke.id));
                   const groups = new Set(hitStrokes.map((stroke) => stroke.groupId).filter(Boolean));
@@ -1097,11 +1230,12 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
               }
             : page,
         ),
-      );
+      ));
     }
   };
 
   const finishPointer = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    flushPointerMutation();
     const mode = pointerModeRef.current;
     pointerModeRef.current = null;
     try {
@@ -1150,6 +1284,9 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
         );
         scheduleObservation();
       }
+    } else if (mode === "pan") {
+      invalidateBoardCanvas(canvasRef.current);
+      setView(viewRef.current);
     } else if ((mode === "move" || mode === "erase") && gestureSnapshotRef.current) {
       if (event.type === "pointercancel") {
         setPages(gestureSnapshotRef.current);
@@ -1213,9 +1350,46 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
     recognition.start();
   };
 
+  const beginTitleRename = () => {
+    setTitleDraft(boardTitle);
+    setIsRenamingTitle(true);
+  };
+
+  const cancelTitleRename = () => {
+    setTitleDraft(boardTitle);
+    setIsRenamingTitle(false);
+  };
+
+  const saveBoardTitle = async () => {
+    const nextTitle = titleDraft.trim();
+    if (!nextTitle) {
+      setToast("Board name cannot be empty.");
+      titleInputRef.current?.focus();
+      return;
+    }
+    if (nextTitle === boardTitle) {
+      setIsRenamingTitle(false);
+      return;
+    }
+    setIsSavingTitle(true);
+    try {
+      const result = await syncBoard({ captureSnapshot: true, title: nextTitle, kind: "explicit" });
+      if (!result) throw new Error("The shared board is still initializing.");
+      setBoardTitle(nextTitle);
+      setTitleDraft(nextTitle);
+      setIsRenamingTitle(false);
+      setToast(`Board renamed to “${nextTitle}”.`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "Could not rename the board.");
+      titleInputRef.current?.focus();
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   const statusLabel = {
     connecting: "Preparing board",
-    authorized: "AI recently active",
+    authorized: localTutor ? "Codex ready" : "AI recently active",
     offline: "Connect AI",
     thinking: "AI active",
     drawing: "AI drawing",
@@ -1235,11 +1409,36 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
           <div><div className="brand-name">unsolvable</div><div className="brand-subtitle">Mathematical tutor</div></div>
         </Link>
 
-        <button className="problem-title" type="button" onClick={() => setPagesOpen((open) => !open)}>
-          <span className="problem-kicker">Open board</span>
-          <span>Untitled engineering problem</span>
-          <ChevronDown size={15} />
-        </button>
+        {isRenamingTitle ? (
+          <form className="problem-title-editor" onSubmit={(event) => { event.preventDefault(); void saveBoardTitle(); }}>
+            <span className="problem-kicker">Board name</span>
+            <input
+              ref={titleInputRef}
+              className="input input-sm board-title-input"
+              value={titleDraft}
+              maxLength={120}
+              disabled={isSavingTitle}
+              aria-label="Board name"
+              onChange={(event) => setTitleDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelTitleRename();
+                }
+              }}
+            />
+            <div className="problem-title-actions">
+              <button className="btn btn-ghost btn-sm btn-square" type="submit" disabled={isSavingTitle} aria-label="Save board name"><Check size={15} /></button>
+              <button className="btn btn-ghost btn-sm btn-square" type="button" disabled={isSavingTitle} aria-label="Cancel renaming" onClick={cancelTitleRename}><X size={15} /></button>
+            </div>
+          </form>
+        ) : (
+          <button className="problem-title btn btn-ghost" type="button" onClick={beginTitleRename} aria-label={`Rename board: ${boardTitle}`}>
+            <span className="problem-kicker">Board name</span>
+            <span className="board-title-text">{boardTitle}</span>
+            <PenLine size={14} />
+          </button>
+        )}
 
         <div className="top-actions">
           <label className="observe-toggle">
@@ -1342,7 +1541,7 @@ export default function TutorBoard({ displayName, boardId }: { displayName: stri
               ))}
             </div>
             <div className="connection-note">
-              <strong>{bridgeState === "authorized" ? "An AI assistant accessed this board recently" : "No recent remote AI activity"}</strong>
+              <strong>{localTutor ? "Local Codex runner enabled" : bridgeState === "authorized" ? "An AI assistant accessed this board recently" : "No recent remote AI activity"}</strong>
               <span>The MCP client opens Unsolvable sign-in and consent for {displayName}; no model-provider key is stored here.</span>
             </div>
             <button className="connection-done" type="button" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/mcp`).then(() => setToast("MCP server address copied.")).catch(() => undefined); }}>Copy MCP server address</button>
