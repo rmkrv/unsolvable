@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isSameOrigin } from "@/lib/server/auth/request-identity";
 import { requireRequestViewer } from "@/lib/server/auth/viewer-service";
-import { readTutorBoard, saveTutorBoard } from "@/lib/server/boards/board-service";
+import { deleteEmptyTutorBoard, readTutorBoard, saveTutorBoard } from "@/lib/server/boards/board-service";
 import { ResourceNotFound, Conflict } from "@/lib/server/auth/authorization-errors";
 import { errorResponse } from "@/lib/server/http/api-errors";
 import { routeError } from "@/lib/server/http/route-utils";
@@ -59,5 +59,17 @@ export async function PUT(request: Request, context: { params: Promise<{ boardId
       return routeError(new Conflict("Board changed elsewhere. Reload the latest version."));
     }
     return routeError(error, "Could not update the board.");
+  }
+}
+
+export async function DELETE(request: Request, context: { params: Promise<{ boardId: string }> }) {
+  if (!isSameOrigin(request)) return errorResponse("cross_origin", "Cross-origin write rejected.", 403);
+  try {
+    const viewer = await requireRequestViewer();
+    const { boardId } = await context.params;
+    const deleted = await deleteEmptyTutorBoard(viewer, boardId.slice(0, 120));
+    return NextResponse.json({ deleted });
+  } catch (error) {
+    return routeError(error, "Could not clean up the empty board.");
   }
 }

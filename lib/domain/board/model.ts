@@ -50,6 +50,17 @@ export function createEmptyBoardDocument(boardId: string): BoardDocument {
   };
 }
 
+export function isBoardDocumentEmpty(value: unknown) {
+  if (!value || typeof value !== "object") return false;
+  const pages = (value as { pages?: unknown }).pages;
+  if (!Array.isArray(pages)) return false;
+  return pages.every((page) => {
+    if (!page || typeof page !== "object") return false;
+    const strokes = (page as { strokes?: unknown }).strokes;
+    return Array.isArray(strokes) && strokes.length === 0;
+  });
+}
+
 export function makeId(prefix = "stroke") {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }

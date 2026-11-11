@@ -33,9 +33,20 @@ export type SharedBoardResponse = {
   actions: Array<{ id: number; value: BoardAction }>;
 };
 
+export type BoardListItem = {
+  boardId: string;
+  title: string;
+  subject: string | null;
+  eventVersion: number;
+  lastOpenedAt: number;
+  updatedAt: number;
+};
+
 export interface BoardGateway {
+  list(limit?: number): Promise<BoardListItem[]>;
   read(boardId: string, after: number, options?: { includeBoard?: boolean }): Promise<SharedBoardResponse>;
   save(request: BoardSaveRequest): Promise<BoardSaveResult>;
+  deleteIfEmpty(boardId: string, options?: { keepalive?: boolean }): Promise<boolean>;
 }
 
 async function jsonOrError<T>(response: Response, fallback: string): Promise<T> {
@@ -48,6 +59,12 @@ async function jsonOrError<T>(response: Response, fallback: string): Promise<T> 
 
 export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGateway {
   return {
+    async list(limit = 12) {
+      const params = new URLSearchParams({ limit: String(Math.max(1, Math.min(50, limit))) });
+      const response = await fetcher(`/api/student/boards?${params}`, { cache: "no-store" });
+      const payload = await jsonOrError<{ boards: BoardListItem[] }>(response, "Could not list boards.");
+      return payload.boards;
+    },
     async read(boardId, after, { includeBoard = true } = {}) {
       const params = new URLSearchParams({ boardId, after: String(after) });
       const boardRequest = includeBoard
@@ -66,6 +83,14 @@ export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGate
         body: JSON.stringify({ state: document, snapshotDataUrl: snapshotDataUrl ?? null, expectedVersion, title }),
       });
       return jsonOrError<{ eventVersion: number; updatedAt: number }>(response, "Could not sync the shared board.");
+    },
+    async deleteIfEmpty(boardId, { keepalive = false } = {}) {
+      const response = await fetcher(`/api/student/boards/${encodeURIComponent(boardId)}`, {
+        method: "DELETE",
+        keepalive,
+      });
+      const payload = await jsonOrError<{ deleted: boolean }>(response, "Could not clean up the empty board.");
+      return payload.deleted;
     },
   };
 }

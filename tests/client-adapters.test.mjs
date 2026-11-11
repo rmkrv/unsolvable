@@ -52,6 +52,16 @@ test("HTTP board gateway owns board route serialization", async () => {
   assert.deepEqual(body.state, document);
   assert.equal(body.expectedVersion, 0);
   assert.equal(body.title, "Renamed board");
+
+  requests.length = 0;
+  const deletionGateway = createHttpBoardGateway(async (input, init) => {
+    requests.push({ input, init });
+    return Response.json({ deleted: true });
+  });
+  assert.equal(await deletionGateway.deleteIfEmpty("board-1", { keepalive: true }), true);
+  assert.equal(requests[0].input, "/api/student/boards/board-1");
+  assert.equal(requests[0].init.method, "DELETE");
+  assert.equal(requests[0].init.keepalive, true);
 });
 
 test("HTTP board gateway preserves API status and error code", async () => {
@@ -83,4 +93,18 @@ test("HTTP board gateway can poll actions without downloading the board", async 
   assert.equal(result.board, null);
   assert.equal(result.actions.length, 1);
   assert.deepEqual(requests, ["/api/student/boards/board-1/actions?boardId=board-1&after=11"]);
+});
+
+test("HTTP board gateway lists recent boards for practice navigation", async () => {
+  const { createHttpBoardGateway } = await importTypeScript("lib/client/board/board-gateway.ts");
+  const requests = [];
+  const board = { boardId: "board-2", title: "Previous", subject: null, eventVersion: 3, lastOpenedAt: 20, updatedAt: 10 };
+  const gateway = createHttpBoardGateway(async (input, init) => {
+    requests.push({ input, init });
+    return Response.json({ boards: [board] });
+  });
+
+  assert.deepEqual(await gateway.list(50), [board]);
+  assert.equal(requests[0].input, "/api/student/boards?limit=50");
+  assert.equal(requests[0].init.cache, "no-store");
 });

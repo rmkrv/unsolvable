@@ -26,7 +26,7 @@ export default function StartPage() {
         </nav>
         <div className="navbar-end gap-2">
           <Link className="btn btn-ghost btn-sm" href="/auth/sign-in?redirectTo=/app">Sign in</Link>
-          <Link className="btn btn-neutral btn-sm hidden sm:inline-flex" href="/auth/sign-up?redirectTo=/app">Create account</Link>
+          <Link className="btn btn-outline btn-sm hidden sm:inline-flex" href="/auth/sign-up?redirectTo=/app">Create account</Link>
         </div>
       </header>
 
@@ -44,7 +44,7 @@ export default function StartPage() {
               Think on an open whiteboard. Get precise help at the step that broke down. Build understanding you can use on the next problem.
             </p>
             <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link className="btn btn-neutral btn-lg" href="/auth/sign-up?redirectTo=/app">
+              <Link className="btn btn-outline btn-lg" href="/auth/sign-up?redirectTo=/app">
                 Start practicing <ArrowRight size={18} />
               </Link>
               <a className="btn btn-ghost btn-lg" href="#practice">See how it works</a>

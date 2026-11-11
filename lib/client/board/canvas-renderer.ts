@@ -197,3 +197,22 @@ export function renderBoardCanvas(input: CanvasRenderInput) {
     context.restore();
   }
 }
+
+export function renderBoardPageForExport(page: Page, width = 1600, height = 1130) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("PDF export is unavailable in this browser.");
+  const bounds = aggregateStrokeBounds(page.strokes);
+  const padding = 96;
+  const zoom = bounds
+    ? Math.min(1.6, (width - padding * 2) / Math.max(1, bounds.width), (height - padding * 2) / Math.max(1, bounds.height))
+    : 1;
+  const viewport = bounds
+    ? { x: padding - bounds.x * zoom, y: padding - bounds.y * zoom, zoom }
+    : { x: padding, y: padding, zoom: 1 };
+  drawGrid(context, width, height, viewport);
+  for (const stroke of page.strokes) drawStroke(context, stroke, viewport);
+  return canvas.toDataURL("image/png");
+}
