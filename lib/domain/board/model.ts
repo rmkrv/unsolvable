@@ -18,6 +18,26 @@ export type Stroke = {
 export type Page = { id: string; name: string; strokes: Stroke[] };
 export type Viewport = { x: number; y: number; zoom: number };
 
+export type TaskDescription = {
+  sourceName: string;
+  mediaType: string;
+  importedAt: number;
+  text?: string;
+  image?: {
+    dataUrl: string;
+    width: number;
+    height: number;
+  };
+  images?: Array<{
+    dataUrl: string;
+    width: number;
+    height: number;
+    pageNumber?: number;
+  }>;
+  pageCount?: number;
+  omittedPageCount?: number;
+};
+
 export type BoardDocument = {
   boardId: string;
   pages: Page[];
@@ -33,6 +53,7 @@ export type BoardDocument = {
   hintLevel: number;
   autoObserve?: boolean;
   request?: { message: string; trigger: string; at: number } | null;
+  taskDescription?: TaskDescription;
 };
 
 // don't change this

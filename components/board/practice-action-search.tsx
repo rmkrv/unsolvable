@@ -23,7 +23,7 @@ type ActionDefinition = {
 };
 
 const ACTION_DEFINITIONS: ActionDefinition[] = [
-  { id: "upload", label: "Upload problem", description: "Import PDF, DOCX, or TXT", keywords: "file document problem import", icon: FileUp },
+  { id: "upload", label: "Give task to Nyx", description: "PDF, DOCX, TXT, or image", keywords: "file document problem task image context", icon: FileUp },
   { id: "new-board", label: "New board", description: "Start another clean practice board", keywords: "create blank fresh", icon: Plus },
   { id: "open-previous", label: "Open previous", description: "Return to your most recent earlier board", keywords: "recent last continue history", icon: History },
   { id: "open-board", label: "Open board", description: "Browse all saved boards", keywords: "library choose existing browse", icon: LayoutGrid },
@@ -38,14 +38,14 @@ function filteredActions(query: string) {
 }
 
 export function PracticeActionSearch({
-  onUploadProblem,
+  onGiveTaskToNyx,
   onCreateBoard,
   onOpenPrevious,
   onOpenBoard,
   onExportPng,
   onExportPdf,
 }: {
-  onUploadProblem: (file: File) => void | Promise<void>;
+  onGiveTaskToNyx: (file: File) => void | Promise<void>;
   onCreateBoard: () => void | Promise<void>;
   onOpenPrevious: () => void | Promise<void>;
   onOpenBoard: () => void | Promise<void>;
@@ -113,11 +113,11 @@ export function PracticeActionSearch({
         ref={fileInputRef}
         className="sr-only"
         type="file"
-        accept=".pdf,.docx,.txt,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        accept=".pdf,.docx,.txt,image/*,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          if (file) void onUploadProblem(file);
+          if (file) void onGiveTaskToNyx(file);
         }}
       />
 

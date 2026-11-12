@@ -17,7 +17,7 @@ async function policyModule() {
 
 test("MCP observation and verification tools are read-only and closed-world", async () => {
   const { boardToolAnnotations } = await policyModule();
-  for (const name of ["observe_board", "verify_arithmetic_equation", "verify_math_step"]) {
+  for (const name of ["observe_board", "read_task_description", "verify_arithmetic_equation", "verify_math_step"]) {
     assert.deepEqual(boardToolAnnotations(name), {
       readOnlyHint: true,
       destructiveHint: false,

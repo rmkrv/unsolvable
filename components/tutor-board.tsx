@@ -37,6 +37,7 @@ import {
   type Page,
   type Point,
   type Stroke,
+  type TaskDescription,
   type Viewport,
 } from "@/lib/domain/board/model";
 import {
@@ -51,8 +52,7 @@ import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
 import { BoardSaveCoordinator, type BoardSaveKind } from "@/lib/client/board/board-save-coordinator";
 import { invalidateBoardCanvas, renderBoardCanvas, renderBoardPageForExport } from "@/lib/client/board/canvas-renderer";
-import { extractProblemFile } from "@/lib/client/board/problem-file";
-import { buildProblemPages } from "@/lib/client/board/problem-import";
+import { extractTaskFile } from "@/lib/client/board/problem-file";
 import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
 import {
   readActionCursor,
@@ -233,6 +233,7 @@ export default function TutorBoard({
   const saveCoordinatorRef = useRef<BoardSaveCoordinator | null>(null);
   const applyingRemoteStateRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
+  const taskDescriptionRef = useRef<TaskDescription | undefined>(undefined);
   const previousToolRef = useRef<Tool | null>(null);
   const temporaryShapeToolRef = useRef<{ key: string; tool: ShapeTool; previousTool: Tool } | null>(null);
   const shiftPressedRef = useRef(false);
@@ -916,6 +917,7 @@ export default function TutorBoard({
           hintLevel: hintLevelRef.current,
           autoObserve: autoObserveRef.current,
           request: requestRef.current,
+          taskDescription: taskDescriptionRef.current,
         },
         snapshotDataUrl,
         title,
@@ -947,6 +949,7 @@ export default function TutorBoard({
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
           setAutoObserve(payload.board.state.autoObserve === true);
+          taskDescriptionRef.current = payload.board.state.taskDescription;
         }
         if (shouldApplyRemote && payload.board?.title) {
           setBoardTitle(payload.board.title);
@@ -1418,29 +1421,21 @@ export default function TutorBoard({
     }
   };
 
-  const importProblem = async (file: File) => {
-    setToast(`Reading ${file.name}…`);
+  const giveTaskToNyx = async (file: File) => {
+    setToast(`Giving ${file.name} to Nyx…`);
+    const previousTaskDescription = taskDescriptionRef.current;
     try {
-      const problem = await extractProblemFile(file);
-      const importedPages = buildProblemPages(problem.text, problem.title);
-      const importedFirstPage = importedPages[0];
-      const previousPages = pagesRef.current;
-      const nextPages = previousPages.every((page) => page.strokes.length === 0)
-        ? importedPages
-        : [...previousPages, ...importedPages];
-      pagesRef.current = nextPages;
-      commitPages(() => nextPages);
-      activePageIdRef.current = importedFirstPage.id;
-      setActivePageId(importedFirstPage.id);
-      setSelectedIds([]);
-      viewRef.current = { x: 40, y: 32, zoom: 0.86 };
-      setView(viewRef.current);
-      setBoardTitle(problem.title);
-      setTitleDraft(problem.title);
-      await syncBoard({ title: problem.title, kind: "explicit" });
-      setToast(`Imported ${file.name} into ${importedPages.length} board page${importedPages.length === 1 ? "" : "s"}.`);
+      const task = await extractTaskFile(file);
+      taskDescriptionRef.current = {
+        ...task,
+        importedAt: Date.now(),
+      };
+      const result = await syncBoard({ kind: "explicit" });
+      if (!result) throw new Error("The shared board is still initializing.");
+      setToast(`${file.name} is ready in Nyx's task memory.`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "The problem file could not be imported.");
+      taskDescriptionRef.current = previousTaskDescription;
+      setToast(error instanceof Error ? error.message : "The task could not be given to Nyx.");
     }
   };
 
@@ -1551,7 +1546,7 @@ export default function TutorBoard({
           )}
 
           <PracticeActionSearch
-            onUploadProblem={importProblem}
+            onGiveTaskToNyx={giveTaskToNyx}
             onCreateBoard={createNewBoard}
             onOpenPrevious={openPreviousBoard}
             onOpenBoard={openBoardLibrary}
@@ -1644,8 +1639,8 @@ export default function TutorBoard({
           <div className="tutor-composer">
             <div className="composer-status" aria-live="polite"><Sparkles size={13} /><span>{toast}</span></div>
             <div className="composer-row">
-              <button type="button" className={`voice-button ${isListening ? "is-listening" : ""}`} onClick={startVoice} aria-label={isListening ? "Stop listening" : "Talk to Unsolvable"}>{isListening ? <CircleStop size={19} /> : <Mic size={19} />}</button>
-              <input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && prompt.trim()) { const message = prompt.trim(); setPrompt(""); sendTurn(message, "typed"); } }} placeholder="Ask briefly, or keep working…" aria-label="Ask Unsolvable" />
+              <button type="button" className={`voice-button ${isListening ? "is-listening" : ""}`} onClick={startVoice} aria-label={isListening ? "Stop listening" : "Talk to Nyx"}>{isListening ? <CircleStop size={19} /> : <Mic size={19} />}</button>
+              <input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && prompt.trim()) { const message = prompt.trim(); setPrompt(""); sendTurn(message, "typed"); } }} placeholder="Ask briefly, or keep working…" aria-label="Ask Nyx" />
               {(bridgeState === "thinking" || bridgeState === "drawing") && <button type="button" className="stop-button" onClick={interrupt}><CircleStop size={15} /> Stop</button>}
               <button type="button" className="check-button" onClick={() => sendTurn("Check my work. Mark only the first invalid step, or briefly confirm if it is correct.", "explicit_verification")}><Check size={16} /> Check work</button>
             </div>

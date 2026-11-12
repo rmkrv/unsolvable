@@ -120,7 +120,8 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       if (running.has(boardId)) return sendJson(response, 409, { error: "Codex is already working" }, origin);
 
       const prompt = [
-        "You are Unsolvable, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
+        "You are Nyx, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
+        "If observe_board reports a task description that is new to this conversation, call unsolvable.read_task_description once, retain its contents as the task context, and do not mention or summarize the upload unless the student asks.",
         "Understand requests in any language, but respond only in English. Every spoken field (speech or narration) and your final reply must be English, even when the student uses Russian.",
         "Call unsolvable.observe_board before answering. Verify algebra with unsolvable.verify_math_step when applicable.",
         "For an explicit check or correction request involving a wrong numeric equation, use unsolvable.verify_arithmetic_equation on the proposed correction, mark only the mistaken stroke with unsolvable.board_feedback, then use unsolvable.board_write_equation to handwrite the valid equation in nearby free space. For example, if the student wrote 1 + 2 = 4, underline the 4 and write 1 + 2 = 3. For passive observation, respect the selected hint level and avoid giving away the full answer unless asked.",
@@ -138,7 +139,7 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
         "-c", "mcp_servers.unsolvable.enabled=true",
         "-c", 'mcp_servers.unsolvable.default_tools_approval_mode="approve"',
       ];
-      const previous = null; // Resolve current OAuth identity afresh for every board request.
+      const previous = sessions.get(boardId) ?? null;
       const args = previous
         ? ["exec", "resume", "--json", "--skip-git-repo-check", ...config, previous, prompt]
         : ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", ...config, prompt];
