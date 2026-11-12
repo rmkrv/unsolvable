@@ -64,6 +64,8 @@ function runCodex(binary, args, env, onEvent) {
 export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" } = {}) {
   const binary = findCodexBinary();
   const env = { ...process.env, CODEX_HOME: process.env.CODEX_HOME || join(os.homedir(), ".codex") };
+  const nyxModel = process.env.NYX_MODEL?.trim() || "gpt-5.6-luna";
+  const nyxReasoningEffort = process.env.NYX_REASONING_EFFORT?.trim() || "low";
   const sessions = new Map();
   const running = new Map();
   let statusCache = null;
@@ -135,14 +137,16 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
         `Student request: ${message}`,
       ].join("\n");
       const config = [
+        "--model", nyxModel,
+        "-c", `model_reasoning_effort=${JSON.stringify(nyxReasoningEffort)}`,
         "-c", `mcp_servers.unsolvable.url=${JSON.stringify(`${siteUrl}/mcp`)}`,
         "-c", "mcp_servers.unsolvable.enabled=true",
         "-c", 'mcp_servers.unsolvable.default_tools_approval_mode="approve"',
       ];
       const previous = sessions.get(boardId) ?? null;
       const args = previous
-        ? ["exec", "resume", "--json", "--skip-git-repo-check", ...config, previous, prompt]
-        : ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", ...config, prompt];
+        ? ["exec", "resume", "--json", "--ignore-user-config", "--skip-git-repo-check", ...config, previous, prompt]
+        : ["exec", "--json", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check", ...config, prompt];
       let threadId = previous || null;
       let reply = "";
       let currentRun = null;
