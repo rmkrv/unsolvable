@@ -64,6 +64,8 @@ function runCodex(binary, args, env, onEvent) {
 export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" } = {}) {
   const binary = findCodexBinary();
   const env = { ...process.env, CODEX_HOME: process.env.CODEX_HOME || join(os.homedir(), ".codex") };
+  const nyxModel = process.env.NYX_MODEL?.trim() || "gpt-5.6-luna";
+  const nyxReasoningEffort = process.env.NYX_REASONING_EFFORT?.trim() || "low";
   const sessions = new Map();
   const running = new Map();
   let statusCache = null;
@@ -120,9 +122,10 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       if (running.has(boardId)) return sendJson(response, 409, { error: "Codex is already working" }, origin);
 
       const prompt = [
-        "You are Unsolvable, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
+        "You are Nyx, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
+        "If observe_board reports a task description that is new to this conversation, call unsolvable.read_task_description once, retain its contents as the task context, and do not mention or summarize the upload unless the student asks.",
         "Understand requests in any language, but respond only in English. Every spoken field (speech or narration) and your final reply must be English, even when the student uses Russian.",
-        "Call unsolvable.observe_board before answering. Verify algebra with unsolvable.verify_math_step when applicable.",
+        "Call unsolvable.observe_board exactly once at the start of the turn. Never call it twice in one turn, including after a board write: write-tool results already contain the updated event version and board summary. Verify each distinct algebra transition or arithmetic equation at most once; reuse that result for the rest of the turn.",
         "For an explicit check or correction request involving a wrong numeric equation, use unsolvable.verify_arithmetic_equation on the proposed correction, mark only the mistaken stroke with unsolvable.board_feedback, then use unsolvable.board_write_equation to handwrite the valid equation in nearby free space. For example, if the student wrote 1 + 2 = 4, underline the 4 and write 1 + 2 = 3. For passive observation, respect the selected hint level and avoid giving away the full answer unless asked.",
         "When writing math, use ordinary lowercase variable letters and plain expressions such as x^3/3. Unsolvable renders ^ as a raised power, / as a fraction, and _ as a subscript. Do not send LaTeX commands or spell out punctuation. For a definite integral, evaluate the bounds; do not equate it to an indefinite antiderivative with +C.",
         "Use board_feedback, board_draw, board_erase, and board_say to teach on the board. For a diagram outside the fixed templates, use board_write_text for short labels and board_draw_arrow for arrows at observed board coordinates. These are editable pen strokes, and arrows do not attach to shapes. Respect the board's hint level.",
@@ -134,14 +137,16 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
         `Student request: ${message}`,
       ].join("\n");
       const config = [
+        "--model", nyxModel,
+        "-c", `model_reasoning_effort=${JSON.stringify(nyxReasoningEffort)}`,
         "-c", `mcp_servers.unsolvable.url=${JSON.stringify(`${siteUrl}/mcp`)}`,
         "-c", "mcp_servers.unsolvable.enabled=true",
         "-c", 'mcp_servers.unsolvable.default_tools_approval_mode="approve"',
       ];
-      const previous = null; // Resolve current OAuth identity afresh for every board request.
+      const previous = sessions.get(boardId) ?? null;
       const args = previous
-        ? ["exec", "resume", "--json", "--skip-git-repo-check", ...config, previous, prompt]
-        : ["exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", ...config, prompt];
+        ? ["exec", "resume", "--json", "--ignore-user-config", "--skip-git-repo-check", ...config, previous, prompt]
+        : ["exec", "--json", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check", ...config, prompt];
       let threadId = previous || null;
       let reply = "";
       let currentRun = null;

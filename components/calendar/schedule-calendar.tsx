@@ -268,7 +268,7 @@ export function ScheduleCalendar({
                 >
                   <div className="mb-2 flex items-center justify-between">
                     {day.inMonth ? (
-                      <button className={`btn btn-ghost btn-xs btn-circle ${day.today ? "bg-neutral text-neutral-content hover:bg-neutral" : ""}`} type="button" aria-label={`Edit only the week containing ${day.key}`} onClick={(event) => { event.stopPropagation(); openWeek(day.key); }}>{day.day}</button>
+                      <button className={`btn btn-ghost btn-xs btn-circle ${day.today ? "bg-accent text-accent-content hover:bg-accent" : ""}`} type="button" aria-label={`Edit only the week containing ${day.key}`} onClick={(event) => { event.stopPropagation(); openWeek(day.key); }}>{day.day}</button>
                     ) : <span className="flex size-7 items-center justify-center text-xs font-semibold">{day.day}</span>}
                   </div>
                   <div className="space-y-1.5">
@@ -485,7 +485,7 @@ function WeeklyPlanDialog({ dialogRef, scope, event, relatedEvents, startsOn, st
               {WEEKDAY_OPTIONS.map((day) => {
                 const active = slots.some((slot) => slot.weekday === day.value);
                 const allowed = allowedWeekdays.has(day.value);
-                return <button className={`btn btn-circle btn-sm sm:btn-md ${active ? "btn-neutral" : "btn-outline"}`} key={day.value} type="button" disabled={!allowed} aria-label={`${active ? "Remove" : "Add"} ${day.label}`} aria-pressed={active} onClick={() => toggleWeekday(day.value)}>{day.short}</button>;
+                return <button className={`btn btn-circle btn-outline btn-sm sm:btn-md ${active ? "bg-accent text-accent-content" : ""}`} key={day.value} type="button" disabled={!allowed} aria-label={`${active ? "Remove" : "Add"} ${day.label}`} aria-pressed={active} onClick={() => toggleWeekday(day.value)}>{day.short}</button>;
               })}
             </div>
           </fieldset>

@@ -90,27 +90,27 @@ export function HomeDashboardHeader({ user, isPreview = false }: { user: HomeUse
 
 export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: BoardSummary[]; insights: HomeInsights }) {
   const recent = recentBoards[0];
-  const boardHref = recent ? `/boards/${encodeURIComponent(recent.boardId)}` : "/boards/current";
+  const boardHref = "/boards/current";
 
   return (
     <section className="mt-7 grid gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.8fr)]">
       <Card className="motion-card overflow-hidden border-border bg-white shadow-sm">
         <CardHeader className="pb-0">
           <div className="mb-5 flex items-center justify-between gap-4">
-            <Badge variant="secondary">{recent ? "Resume session" : "Start practicing"}</Badge>
+            <Badge variant="secondary">Start practicing</Badge>
             <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-foreground"><Sparkles size={18} /></div>
           </div>
           <CardTitle className="max-w-2xl text-3xl leading-tight tracking-[-0.035em] sm:text-4xl">
-            {recent ? recent.title : "Start a clear workspace for the problem in front of you."}
+            Start a clear workspace for the problem in front of you.
           </CardTitle>
           <CardDescription className="mt-2 max-w-xl text-sm leading-6 sm:text-base">
-            {recent ? "Your pages and tutor context are ready exactly where you left them." : "Write naturally, ask for a hint, and keep every step in one place."}
+            Write naturally, ask for a hint, and keep every step in one place. Previous boards stay available in Boards.
           </CardDescription>
         </CardHeader>
         <CardFooter className="mt-auto flex-col items-start justify-between gap-4 pt-7 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 size={14} /> {recent ? `Last opened ${formatRelativeTime(recent.lastOpenedAt)}` : "No sessions yet"}</div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground"><Clock3 size={14} /> {recent ? `Last board saved ${formatRelativeTime(recent.lastOpenedAt)}` : "No sessions yet"}</div>
           <Button asChild size="lg">
-            <Link href={boardHref}>{recent ? "Continue board" : "Open a board"}<ArrowRight /></Link>
+            <Link href={boardHref}>New practice<ArrowRight /></Link>
           </Button>
         </CardFooter>
       </Card>

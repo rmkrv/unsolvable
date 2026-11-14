@@ -38,6 +38,11 @@ export function saveTutorBoard(viewer: Viewer, input: Omit<SaveBoardInput, "user
   return getBoardRepository().saveForUser({ ...input, userId: viewer.appUserId });
 }
 
+export function deleteEmptyTutorBoard(viewer: Viewer, boardId: string) {
+  requireStudent(viewer);
+  return getBoardRepository().deleteEmptyForUser(viewer.appUserId, boardId);
+}
+
 export async function createTutorBoard(viewer: Viewer, title = "Untitled board") {
   requireStudent(viewer);
   const boardId = crypto.randomUUID();

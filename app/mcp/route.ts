@@ -25,7 +25,7 @@ const PROTOCOL_VERSION = "2026-07-28";
 const OBSERVE_TOOL = {
   name: "observe_board",
   description:
-    "Read the signed-in student's current Unsolvable whiteboard, newest request, page history, exact stroke IDs, and optional PNG snapshot. Call this first and again when monitoring for board changes.",
+    "Read the signed-in student's current Unsolvable whiteboard, newest request, page history, exact stroke IDs, and optional PNG snapshot. Call exactly once at the start of an interactive turn. Do not call it again after a write: every write result returns the updated event version and board summary. A later monitoring turn may call it again.",
   inputSchema: {
     type: "object",
     properties: { sinceVersion: { type: "integer", minimum: 0 } },
@@ -33,8 +33,20 @@ const OBSERVE_TOOL = {
   },
 };
 
+const READ_TASK_TOOL = {
+  name: "read_task_description",
+  description:
+    "Read the task file previously given to Nyx. Call once when observe_board reports a new task description, retain it as conversation context, and do not summarize it unless the student asks.",
+  inputSchema: {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  },
+};
+
 const TOOLS = [
   { ...OBSERVE_TOOL, annotations: boardToolAnnotations(OBSERVE_TOOL.name) },
+  { ...READ_TASK_TOOL, annotations: boardToolAnnotations(READ_TASK_TOOL.name) },
   ...dynamicTools.map((tool) => ({
     name: tool.name,
     description: tool.description,
@@ -47,7 +59,7 @@ type JsonValue = string | number | boolean | null | JsonObject | JsonValue[];
 type JsonObject = { [key: string]: JsonValue | undefined };
 type RpcContent =
   | { type: "text"; text: string }
-  | { type: "image"; mimeType: "image/png"; data: string };
+  | { type: "image"; mimeType: string; data: string };
 
 function asObject(value: unknown): JsonObject {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -71,6 +83,7 @@ function summarizeBoard(stateValue: unknown) {
   const pages = Array.isArray(state.pages) ? state.pages.slice(0, 20) : [];
   const viewport = asObject(state.viewport);
   const snapshot = asObject(state.snapshot);
+  const taskDescription = asObject(state.taskDescription);
   const zoom = Number(viewport.zoom) || 1;
   const cssWidth = Number(snapshot.cssWidth) || 1200;
   const cssHeight = Number(snapshot.cssHeight) || 800;
@@ -88,6 +101,15 @@ function summarizeBoard(stateValue: unknown) {
       bottom: (cssHeight - (Number(viewport.y) || 0)) / zoom,
     },
     newestRequest: state.request ?? null,
+    taskDescription: typeof taskDescription.sourceName === "string"
+      ? {
+          available: true,
+          sourceName: taskDescription.sourceName,
+          mediaType: taskDescription.mediaType,
+          importedAt: taskDescription.importedAt,
+          readWith: READ_TASK_TOOL.name,
+        }
+      : null,
     pages: pages.map((pageValue) => {
       const page = asObject(pageValue);
       return {
@@ -290,7 +312,7 @@ export async function POST(request: Request) {
       return rpcResult(id, {
         protocolVersion: "2025-06-18",
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: "unsolvable-tutor", title: "Unsolvable — AI Engineering Tutor", version: "0.1.0" },
+        serverInfo: { name: "unsolvable-tutor", title: "Nyx — AI Engineering Tutor", version: "0.1.0" },
       });
     }
     if (body?.method === "notifications/initialized") return new Response(null, { status: 202 });
@@ -331,6 +353,45 @@ export async function POST(request: Request) {
       return rpcResult(id, {
         content,
         structuredContent: { unchanged, eventVersion: board.eventVersion, board: summary },
+      });
+    }
+
+    if (name === "read_task_description") {
+      const task = asObject(asObject(state).taskDescription);
+      if (typeof task.sourceName !== "string") {
+        return rpcResult(id, {
+          content: [{ type: "text", text: "No task description has been given to Nyx for this board." }],
+          structuredContent: { available: false },
+        });
+      }
+      const taskImages = Array.isArray(task.images)
+        ? task.images.map(asObject)
+        : typeof asObject(task.image).dataUrl === "string"
+          ? [asObject(task.image)]
+          : [];
+      const content: RpcContent[] = [{
+        type: "text",
+        text: typeof task.text === "string"
+          ? `Task description from ${task.sourceName}. Use the attached page images for diagrams, figures, handwriting, and any content absent from the extracted text.${Number(task.omittedPageCount) > 0 ? ` ${task.omittedPageCount} later page(s) could not be attached.` : ""}\n\n${task.text}`
+          : `Task description images from ${task.sourceName}. Transcribe and retain their contents as the task context.${Number(task.omittedPageCount) > 0 ? ` ${task.omittedPageCount} later page(s) could not be attached.` : ""}`,
+      }];
+      for (const image of taskImages) {
+        if (typeof image.dataUrl !== "string") continue;
+        const match = /^data:(image\/[a-z0-9.+-]+);base64,([\s\S]+)$/i.exec(image.dataUrl);
+        if (match) content.push({ type: "image", mimeType: match[1], data: match[2] });
+      }
+      return rpcResult(id, {
+        content,
+        structuredContent: {
+          available: true,
+          sourceName: task.sourceName,
+          mediaType: task.mediaType,
+          importedAt: task.importedAt,
+          text: typeof task.text === "string" ? task.text : undefined,
+          pageCount: task.pageCount,
+          omittedPageCount: task.omittedPageCount,
+          images: taskImages.map((image) => ({ width: image.width, height: image.height, pageNumber: image.pageNumber })),
+        },
       });
     }
 

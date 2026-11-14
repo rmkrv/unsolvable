@@ -9,6 +9,7 @@ import {
   workspaces,
 } from "../../../db/schema.ts";
 import type { BoardRepository, BoardSummary, SaveBoardInput, StoredBoard, StoredTutorAction, UpdateBoardInput } from "./board-repository";
+import { isBoardDocumentEmpty } from "../../domain/board/model.ts";
 
 type PersonalContext = { userId: string; workspaceId: string };
 type AuthorizedBoard = { id: string; externalId: string; role: string; eventVersion: number };
@@ -187,6 +188,22 @@ export class PostgresBoardRepository implements BoardRepository {
           lastMcpAt: updated.lastMcpAt?.getTime() ?? null,
         }
       : null;
+  }
+
+  async deleteEmptyForUser(userId: string, boardId: string) {
+    const board = await findAuthorizedBoard(this.db, userId, boardId);
+    if (!board || board.role !== "owner") return false;
+    const rows = await this.db
+      .select({ state: boards.state })
+      .from(boards)
+      .where(and(eq(boards.id, board.id), eq(boards.eventVersion, board.eventVersion)))
+      .limit(1);
+    if (!rows[0] || !isBoardDocumentEmpty(rows[0].state)) return false;
+    const deleted = await this.db
+      .delete(boards)
+      .where(and(eq(boards.id, board.id), eq(boards.eventVersion, board.eventVersion)))
+      .returning({ id: boards.id });
+    return deleted.length === 1;
   }
 
   async markTutorConnected(userId: string, boardId?: string): Promise<number> {

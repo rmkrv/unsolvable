@@ -1,5 +1,6 @@
 const READ_ONLY_TOOLS = new Set([
   "observe_board",
+  "read_task_description",
   "verify_arithmetic_equation",
   "verify_math_step",
 ]);

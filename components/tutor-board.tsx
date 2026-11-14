@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createTutorTransport } from "@/lib/client/tutor/tutor-transport";
 import {
   ArrowUpRight,
@@ -36,6 +37,7 @@ import {
   type Page,
   type Point,
   type Stroke,
+  type TaskDescription,
   type Viewport,
 } from "@/lib/domain/board/model";
 import {
@@ -49,7 +51,8 @@ import {
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
 import { BoardSaveCoordinator, type BoardSaveKind } from "@/lib/client/board/board-save-coordinator";
-import { invalidateBoardCanvas, renderBoardCanvas } from "@/lib/client/board/canvas-renderer";
+import { invalidateBoardCanvas, renderBoardCanvas, renderBoardPageForExport } from "@/lib/client/board/canvas-renderer";
+import { extractTaskFile } from "@/lib/client/board/problem-file";
 import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
 import {
   readActionCursor,
@@ -63,6 +66,10 @@ import { generateArrow, generateFeedbackStroke, generateHandwriting, generatePla
 import { findFreeHandwritingAnchor } from "@/lib/handwriting-placement.mjs";
 import { createEnglishSpeechController } from "@/lib/english-speech.mjs";
 import { boundsIntersect, buildShapePaths, isEditableTarget, selectionBounds, type ShapeTool } from "@/lib/board-interactions.mjs";
+import { PracticeActionSearch } from "@/components/board/practice-action-search";
+import { PracticeClocks } from "@/components/board/practice-clocks";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 type Tool = "select" | "pen" | "highlighter" | "eraser" | "hand" | ShapeTool;
 type DrawingTool = "pen" | "highlighter" | ShapeTool;
@@ -102,6 +109,7 @@ type SpeechRecognitionWindow = Window & {
 const STROKE_CLIPBOARD_TYPE = "application/x-unsolvable-strokes+json";
 const INITIAL_PAGE: Page = { id: "page-1", name: "Page 1", strokes: [] };
 const boardGateway = createHttpBoardGateway();
+const pendingBoardCleanup = new Map<string, number>();
 
 const tutorBridgeUrl = import.meta.env.VITE_TUTOR_BRIDGE_URL;
 const tutorTransport = createTutorTransport(tutorBridgeUrl);
@@ -170,6 +178,7 @@ export default function TutorBoard({
   boardId: string;
   initialTitle: string;
 }) {
+  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -193,6 +202,7 @@ export default function TutorBoard({
   const [titleDraft, setTitleDraft] = useState(initialTitle);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [printPages, setPrintPages] = useState<Array<{ name: string; dataUrl: string }>>([]);
   const undoRef = useRef<Page[][]>([]);
   const redoRef = useRef<Page[][]>([]);
   const pagesRef = useRef(pages);
@@ -223,6 +233,7 @@ export default function TutorBoard({
   const saveCoordinatorRef = useRef<BoardSaveCoordinator | null>(null);
   const applyingRemoteStateRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
+  const taskDescriptionRef = useRef<TaskDescription | undefined>(undefined);
   const previousToolRef = useRef<Tool | null>(null);
   const temporaryShapeToolRef = useRef<{ key: string; tool: ShapeTool; previousTool: Tool } | null>(null);
   const shiftPressedRef = useRef(false);
@@ -234,6 +245,27 @@ export default function TutorBoard({
     () => pages.find((page) => page.id === activePageId) ?? pages[0],
     [activePageId, pages],
   );
+
+  useEffect(() => {
+    const pending = pendingBoardCleanup.get(boardId);
+    if (pending !== undefined) {
+      window.clearTimeout(pending);
+      pendingBoardCleanup.delete(boardId);
+    }
+    let requested = false;
+    const requestCleanup = () => {
+      if (requested) return;
+      requested = true;
+      pendingBoardCleanup.delete(boardId);
+      void boardGateway.deleteIfEmpty(boardId, { keepalive: true }).catch(() => undefined);
+    };
+    window.addEventListener("pagehide", requestCleanup);
+    return () => {
+      window.removeEventListener("pagehide", requestCleanup);
+      const timeout = window.setTimeout(requestCleanup, 0);
+      pendingBoardCleanup.set(boardId, timeout);
+    };
+  }, [boardId]);
 
   useEffect(() => {
     pagesRef.current = pages;
@@ -885,6 +917,7 @@ export default function TutorBoard({
           hintLevel: hintLevelRef.current,
           autoObserve: autoObserveRef.current,
           request: requestRef.current,
+          taskDescription: taskDescriptionRef.current,
         },
         snapshotDataUrl,
         title,
@@ -916,6 +949,7 @@ export default function TutorBoard({
           setActivePageId(payload.board.state.activePageId || payload.board.state.pages[0].id);
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
           setAutoObserve(payload.board.state.autoObserve === true);
+          taskDescriptionRef.current = payload.board.state.taskDescription;
         }
         if (shouldApplyRemote && payload.board?.title) {
           setBoardTitle(payload.board.title);
@@ -1387,6 +1421,83 @@ export default function TutorBoard({
     }
   };
 
+  const giveTaskToNyx = async (file: File) => {
+    setToast(`Giving ${file.name} to Nyx…`);
+    const previousTaskDescription = taskDescriptionRef.current;
+    try {
+      const task = await extractTaskFile(file);
+      taskDescriptionRef.current = {
+        ...task,
+        importedAt: Date.now(),
+      };
+      const result = await syncBoard({ kind: "explicit" });
+      if (!result) throw new Error("The shared board is still initializing.");
+      setToast(`${file.name} is ready in Nyx's task memory.`);
+    } catch (error) {
+      taskDescriptionRef.current = previousTaskDescription;
+      setToast(error instanceof Error ? error.message : "The task could not be given to Nyx.");
+    }
+  };
+
+  const createNewBoard = () => {
+    router.push("/boards/current");
+  };
+
+  const openPreviousBoard = async () => {
+    try {
+      const boards = await boardGateway.list(50);
+      const previous = boards.find((board) => board.boardId !== boardId);
+      if (!previous) {
+        setToast("There is no previous board yet.");
+        return;
+      }
+      router.push(`/boards/${encodeURIComponent(previous.boardId)}`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "The previous board could not be opened.");
+    }
+  };
+
+  const openBoardLibrary = () => {
+    router.push("/boards");
+  };
+
+  const exportToPdf = async () => {
+    try {
+      await syncBoard({ captureSnapshot: true, kind: "explicit" });
+      const preview = pagesRef.current.map((page) => ({ name: page.name, dataUrl: renderBoardPageForExport(page) }));
+      setPrintPages(preview);
+      const originalTitle = document.title;
+      document.title = boardTitle || "Practice board";
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      window.print();
+      document.title = originalTitle;
+      setPrintPages([]);
+      setToast("PDF export opened in the print dialog.");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "The board could not be exported.");
+    }
+  };
+
+  const exportToPng = async () => {
+    try {
+      await syncBoard({ captureSnapshot: true, kind: "explicit" });
+      const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current) ?? pagesRef.current[0];
+      if (!page) throw new Error("There is no board page to export.");
+      const link = document.createElement("a");
+      const fileName = `${boardTitle}-${page.name}`
+        .trim()
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-|-$/g, "")
+        .toLowerCase() || "practice-board";
+      link.href = renderBoardPageForExport(page);
+      link.download = `${fileName}.png`;
+      link.click();
+      setToast(`Exported ${page.name} as PNG.`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "The board could not be exported as PNG.");
+    }
+  };
+
   const statusLabel = {
     connecting: "Preparing board",
     authorized: localTutor ? "Codex ready" : "AI recently active",
@@ -1404,41 +1515,47 @@ export default function TutorBoard({
   return (
     <main className="tutor-shell">
       <header className="topbar">
-        <Link className="brand-block" href="/home" aria-label="Back to home">
-          <div className="brand-mark" aria-hidden="true" />
-          <div><div className="brand-name">unsolvable</div><div className="brand-subtitle">Mathematical tutor</div></div>
-        </Link>
+        <div className="topbar-left">
+          <Link className="brand-block" href="/home" aria-label="Back to home">
+            <div className="brand-mark" aria-hidden="true" />
+          </Link>
 
-        {isRenamingTitle ? (
-          <form className="problem-title-editor" onSubmit={(event) => { event.preventDefault(); void saveBoardTitle(); }}>
-            <span className="problem-kicker">Board name</span>
-            <input
-              ref={titleInputRef}
-              className="input input-sm board-title-input"
-              value={titleDraft}
-              maxLength={120}
-              disabled={isSavingTitle}
-              aria-label="Board name"
-              onChange={(event) => setTitleDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  cancelTitleRename();
-                }
-              }}
-            />
-            <div className="problem-title-actions">
-              <button className="btn btn-ghost btn-sm btn-square" type="submit" disabled={isSavingTitle} aria-label="Save board name"><Check size={15} /></button>
-              <button className="btn btn-ghost btn-sm btn-square" type="button" disabled={isSavingTitle} aria-label="Cancel renaming" onClick={cancelTitleRename}><X size={15} /></button>
-            </div>
-          </form>
-        ) : (
-          <button className="problem-title btn btn-ghost" type="button" onClick={beginTitleRename} aria-label={`Rename board: ${boardTitle}`}>
-            <span className="problem-kicker">Board name</span>
-            <span className="board-title-text">{boardTitle}</span>
-            <PenLine size={14} />
-          </button>
-        )}
+          {isRenamingTitle ? (
+            <form className="problem-title-editor" onSubmit={(event) => { event.preventDefault(); void saveBoardTitle(); }}>
+              <Input
+                ref={titleInputRef}
+                className="board-title-input"
+                value={titleDraft}
+                maxLength={120}
+                disabled={isSavingTitle}
+                aria-label="Board name"
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={() => void saveBoardTitle()}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelTitleRename();
+                  }
+                }}
+              />
+            </form>
+          ) : (
+            <Button className="header-nav-control problem-title" variant="ghost" type="button" onClick={beginTitleRename} aria-label={`Rename board: ${boardTitle}`}>
+              <span className="board-title-text">{boardTitle}</span>
+            </Button>
+          )}
+
+          <PracticeActionSearch
+            onGiveTaskToNyx={giveTaskToNyx}
+            onCreateBoard={createNewBoard}
+            onOpenPrevious={openPreviousBoard}
+            onOpenBoard={openBoardLibrary}
+            onExportPng={exportToPng}
+            onExportPdf={exportToPdf}
+          />
+        </div>
+
+        <PracticeClocks onTimerComplete={() => setToast("Timer complete — pause and check your approach.")} />
 
         <div className="top-actions">
           <label className="observe-toggle">
@@ -1451,6 +1568,17 @@ export default function TutorBoard({
           </button>
         </div>
       </header>
+
+      <div className="board-print-document" aria-hidden="true">
+        {printPages.map((page) => (
+          <section className="board-print-page" key={page.name}>
+            <h1>{boardTitle}</h1>
+            <p>{page.name}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={page.dataUrl} alt="" />
+          </section>
+        ))}
+      </div>
 
       <section className="workspace">
         <aside className="tool-rail" aria-label="Whiteboard tools">
@@ -1511,8 +1639,8 @@ export default function TutorBoard({
           <div className="tutor-composer">
             <div className="composer-status" aria-live="polite"><Sparkles size={13} /><span>{toast}</span></div>
             <div className="composer-row">
-              <button type="button" className={`voice-button ${isListening ? "is-listening" : ""}`} onClick={startVoice} aria-label={isListening ? "Stop listening" : "Talk to Unsolvable"}>{isListening ? <CircleStop size={19} /> : <Mic size={19} />}</button>
-              <input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && prompt.trim()) { const message = prompt.trim(); setPrompt(""); sendTurn(message, "typed"); } }} placeholder="Ask briefly, or keep working…" aria-label="Ask Unsolvable" />
+              <button type="button" className={`voice-button ${isListening ? "is-listening" : ""}`} onClick={startVoice} aria-label={isListening ? "Stop listening" : "Talk to Nyx"}>{isListening ? <CircleStop size={19} /> : <Mic size={19} />}</button>
+              <input value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && prompt.trim()) { const message = prompt.trim(); setPrompt(""); sendTurn(message, "typed"); } }} placeholder="Ask briefly, or keep working…" aria-label="Ask Nyx" />
               {(bridgeState === "thinking" || bridgeState === "drawing") && <button type="button" className="stop-button" onClick={interrupt}><CircleStop size={15} /> Stop</button>}
               <button type="button" className="check-button" onClick={() => sendTurn("Check my work. Mark only the first invalid step, or briefly confirm if it is correct.", "explicit_verification")}><Check size={16} /> Check work</button>
             </div>

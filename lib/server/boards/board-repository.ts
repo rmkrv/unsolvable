@@ -43,6 +43,7 @@ export interface BoardRepository {
   markOpened(userId: string, boardId: string): Promise<boolean>;
   saveForUser(input: SaveBoardInput): Promise<{ eventVersion: number; updatedAt: number; lastMcpAt: number | null }>;
   updateForUser(input: UpdateBoardInput): Promise<{ eventVersion: number; updatedAt: number; lastMcpAt: number | null } | null>;
+  deleteEmptyForUser(userId: string, boardId: string): Promise<boolean>;
   markTutorConnected(userId: string, boardId?: string): Promise<number>;
   enqueueTutorAction(userId: string, boardId: string, action: unknown): Promise<number | null>;
   readTutorActions(userId: string, boardId: string, after: number): Promise<StoredTutorAction[]>;
