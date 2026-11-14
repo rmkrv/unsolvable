@@ -67,7 +67,7 @@ export function PracticeActionSearch({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      if (event.altKey && event.code === "Slash") {
         event.preventDefault();
         open();
       }
@@ -105,9 +105,8 @@ export function PracticeActionSearch({
 
   return (
     <>
-      <Button className="header-nav-control practice-search-trigger" variant="ghost" size="sm" type="button" onClick={open} aria-label="Search practice actions">
+      <Button className="header-nav-control practice-search-trigger" variant="ghost" size="sm" type="button" onClick={open} aria-label="Search practice actions" aria-keyshortcuts="Alt+/">
         <Search size={15} />
-        <span>Actions</span>
       </Button>
       <input
         ref={fileInputRef}

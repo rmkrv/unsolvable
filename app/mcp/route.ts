@@ -25,7 +25,7 @@ const PROTOCOL_VERSION = "2026-07-28";
 const OBSERVE_TOOL = {
   name: "observe_board",
   description:
-    "Read the signed-in student's current Unsolvable whiteboard, newest request, page history, exact stroke IDs, and optional PNG snapshot. Call this first and again when monitoring for board changes.",
+    "Read the signed-in student's current Unsolvable whiteboard, newest request, page history, exact stroke IDs, and optional PNG snapshot. Call exactly once at the start of an interactive turn. Do not call it again after a write: every write result returns the updated event version and board summary. A later monitoring turn may call it again.",
   inputSchema: {
     type: "object",
     properties: { sinceVersion: { type: "integer", minimum: 0 } },
