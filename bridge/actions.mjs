@@ -229,7 +229,7 @@ export const dynamicTools = [
   {
     type: "function",
     name: "verify_arithmetic_equation",
-    description: "Check whether a numeric equation or simple polynomial definite integral is true before writing a correction. For example, 1 + 2 = 4 is invalid, 1 + 2 = 3 is valid, and ∫_0^2(x^2+x-2)dx=2/3 is valid. Returns unknown for unsupported equations with variables.",
+    description: "Check a non-obvious numeric equation or simple polynomial definite integral. Do not call for basic arithmetic: reason directly, and board_write_equation independently rejects false corrections. Returns unknown for unsupported equations with variables.",
     inputSchema: {
       type: "object",
       properties: { equation: { type: "string" } },
@@ -240,7 +240,7 @@ export const dynamicTools = [
   {
     type: "function",
     name: "board_write_equation",
-    description: "Handwrite a corrected equation as readable lowercase and numeral pen strokes near the mistake, in free space. Use ^ for raised powers, _ for subscripts, and / for a stacked fraction; ∫, π, √ are supported. Use after verifying a numeric correction. Pass exact nearby stroke IDs. Leave narration empty if another action already spoke.",
+    description: "Handwrite a corrected equation as readable lowercase and numeral pen strokes near the mistake, in free space. The server validates numeric corrections and rejects false ones. Use ^ for raised powers, _ for subscripts, and / for a stacked fraction; ∫, π, √ are supported. Pass exact nearby stroke IDs. Leave narration empty if another action already spoke.",
     inputSchema: {
       type: "object",
       properties: {
@@ -293,7 +293,7 @@ export const dynamicTools = [
     type: "function",
     name: "verify_math_step",
     description:
-      "Deterministically verify whether one algebraic equation follows from another. Call this before marking an algebra step correct or incorrect.",
+      "Deterministically verify whether one confidently transcribed, nontrivial algebraic equation follows from another. Call at most once for that transition. Do not use for simple arithmetic or when the source handwriting itself is ambiguous.",
     inputSchema: {
       type: "object",
       properties: { from: { type: "string" }, to: { type: "string" } },

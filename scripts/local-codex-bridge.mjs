@@ -3,9 +3,32 @@ import { existsSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import os from "node:os";
+import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 
 const ALLOWED_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
 const MAX_BODY_BYTES = 4096;
+const TURN_TIMEOUT_MS = 5 * 60_000;
+
+const NYX_INSTRUCTIONS = [
+  "You are Nyx, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
+  "If observe_board reports a task description that is new to this conversation, call unsolvable.read_task_description once, retain its contents as the task context, and do not mention or summarize the upload unless the student asks.",
+  "Understand requests in any language, but respond only in English. Every spoken field (speech or narration) and your final reply must be English, even when the student uses Russian.",
+  "Call unsolvable.observe_board exactly once at the start of the turn. Never call it twice in one turn, including after a board write: write-tool results already contain the updated event version and board summary. Read the attached board image carefully before judging legibility. Do not reject the whole step as unclear when a reasonable transcription is visible; name only the specific ambiguous symbol when genuine ambiguity remains.",
+  "For simple numeric arithmetic, reason directly and do not call verify_arithmetic_equation: board_write_equation validates a proposed correction server-side. For an explicit check or correction involving a wrong numeric equation, mark only the mistaken stroke with unsolvable.board_feedback, then use unsolvable.board_write_equation to handwrite the valid equation in nearby free space. For example, if the student wrote 1 + 2 = 4, underline the 4 and write 1 + 2 = 3. Use verify_math_step at most once only for a confidently transcribed, nontrivial algebra transition. For passive observation, respect the selected hint level and avoid giving away the full answer unless asked.",
+  "When writing math, use ordinary lowercase variable letters and plain expressions such as x^3/3. Unsolvable renders ^ as a raised power, / as a fraction, and _ as a subscript. Do not send LaTeX commands or spell out punctuation. For a definite integral, evaluate the bounds; do not equate it to an indefinite antiderivative with +C.",
+  "Use board_feedback, board_draw, board_erase, and board_say to teach on the board. For a diagram outside the fixed templates, use board_write_text for short labels and board_draw_arrow for arrows at observed board coordinates. These are editable pen strokes, and arrows do not attach to shapes. Respect the board's hint level.",
+  "Use the fewest board actions that satisfy the request. Do not claim the board lacks text or arrows: check the available tools. If a requested layout still cannot be made with them, explain the specific missing operation and offer a usable fallback.",
+  "Send at most one spoken message per turn. If you use multiple board tools, put speech or narration in only one tool call and leave the other spoken fields empty. Do not call board_say after a tool that already speaks.",
+  "Do not edit source files or run shell commands. Give a short final response for the student's status display.",
+].join("\n");
+
+function createTurnPrompt(boardId, trigger, message) {
+  return [
+    `Board ID: ${boardId}`,
+    `Request trigger: ${trigger}`,
+    `Student request: ${message}`,
+  ].join("\n");
+}
 
 export function findCodexBinary(env = process.env) {
   if (env.CODEX_BIN && existsSync(env.CODEX_BIN)) return env.CODEX_BIN;
@@ -64,14 +87,118 @@ function runCodex(binary, args, env, onEvent) {
 export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" } = {}) {
   const binary = findCodexBinary();
   const env = { ...process.env, CODEX_HOME: process.env.CODEX_HOME || join(os.homedir(), ".codex") };
-  const nyxModel = process.env.NYX_MODEL?.trim() || "gpt-5.6-luna";
+  const nyxModel = process.env.NYX_MODEL?.trim() || "gpt-5.6-sol";
   const nyxReasoningEffort = process.env.NYX_REASONING_EFFORT?.trim() || "low";
+  const requestedBridgeMode = process.env.NYX_BRIDGE_MODE?.trim() || "app-server";
   const sessions = new Map();
   const running = new Map();
+  let appServer = null;
+  let appServerStartupError = null;
   let statusCache = null;
   let statusAt = 0;
 
+  async function getAppServerThread(boardId) {
+    const previous = sessions.get(boardId);
+    if (previous?.mode === "app-server") return previous.threadId;
+    const result = await appServer.request("thread/start", {
+      model: nyxModel,
+      cwd: process.cwd(),
+      approvalPolicy: "never",
+      sandbox: "read-only",
+      developerInstructions: NYX_INSTRUCTIONS,
+      ephemeral: true,
+    }, 60_000);
+    const threadId = result?.thread?.id;
+    if (!threadId) throw new Error("Codex app-server did not create a thread.");
+    sessions.set(boardId, { mode: "app-server", threadId });
+    return threadId;
+  }
+
+  async function runAppServerTurn(boardId, message, trigger) {
+    const active = { mode: "app-server", threadId: null, turnId: null, cancelled: false };
+    running.set(boardId, active);
+    let threadId;
+    try {
+      threadId = await getAppServerThread(boardId);
+      active.threadId = threadId;
+      if (active.cancelled) throw new Error("Codex turn stopped.");
+    } catch (error) {
+      if (running.get(boardId) === active) running.delete(boardId);
+      throw error;
+    }
+    let turnId = null;
+    let reply = "";
+    let earlyCompletion = null;
+    let finishTurn;
+    let failTurn;
+    const completed = new Promise((resolve, reject) => {
+      finishTurn = resolve;
+      failTurn = reject;
+    });
+    const stopListening = appServer.onNotification((method, params) => {
+      if (params.threadId !== threadId) return;
+      if (method === "item/completed" && params.item?.type === "agentMessage") {
+        reply = params.item.text || reply;
+      }
+      if (method !== "turn/completed") return;
+      if (!turnId) {
+        earlyCompletion = params;
+        return;
+      }
+      if (params.turn?.id === turnId) finishTurn(params.turn);
+    });
+    const timeout = setTimeout(() => failTurn(new Error("Nyx timed out while completing the turn.")), TURN_TIMEOUT_MS);
+    try {
+      const result = await appServer.request("turn/start", {
+        threadId,
+        input: [{ type: "text", text: createTurnPrompt(boardId, trigger, message) }],
+        model: nyxModel,
+        effort: nyxReasoningEffort,
+      }, 60_000);
+      turnId = result?.turn?.id;
+      if (!turnId) throw new Error("Codex app-server did not start a turn.");
+      active.turnId = turnId;
+      if (active.cancelled) {
+        await appServer.request("turn/interrupt", { threadId, turnId });
+        throw new Error("Codex turn stopped.");
+      }
+      if (earlyCompletion?.turn?.id === turnId) finishTurn(earlyCompletion.turn);
+      const turn = await completed;
+      if (active.cancelled) throw new Error("Codex turn stopped.");
+      if (turn?.status !== "completed") {
+        throw new Error(turn?.error?.message || `Codex turn ended with status ${turn?.status || "unknown"}.`);
+      }
+      return { reply, threadId };
+    } finally {
+      clearTimeout(timeout);
+      stopListening();
+      if (running.get(boardId) === active) running.delete(boardId);
+    }
+  }
+
+  if (binary && requestedBridgeMode === "app-server") {
+    appServer = new CodexAppServerClient({
+      binary,
+      env,
+      args: [
+        "-c", `model=${JSON.stringify(nyxModel)}`,
+        "-c", `model_reasoning_effort=${JSON.stringify(nyxReasoningEffort)}`,
+        "-c", `mcp_servers.unsolvable.url=${JSON.stringify(`${siteUrl}/mcp`)}`,
+        "-c", "mcp_servers.unsolvable.enabled=true",
+        "-c", 'mcp_servers.unsolvable.default_tools_approval_mode="approve"',
+      ],
+    });
+    try {
+      await appServer.start();
+    } catch (error) {
+      appServerStartupError = error;
+      appServer.close();
+      appServer = null;
+    }
+  }
+
   async function status() {
+    if (appServer?.isRunning()) return { ready: true, label: `Nyx app-server ready (${nyxModel}, ${nyxReasoningEffort})` };
     if (Date.now() - statusAt < 10_000 && statusCache) return statusCache;
     if (!binary) return { ready: false, error: "Codex CLI is not installed. Install Codex, then sign in once." };
     let output = "";
@@ -79,7 +206,12 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
     // `login status` writes its human-readable result to stdout, so check exit status.
     output = result.stderr || "";
     statusCache = result.code === 0
-      ? { ready: true, label: "Codex signed in on this computer" }
+      ? {
+          ready: true,
+          label: appServerStartupError
+            ? `Codex signed in; using exec fallback (${appServerStartupError.message})`
+            : "Codex signed in on this computer",
+        }
       : { ready: false, error: output.includes("home directory") ? "Codex home could not be found." : "Sign in to Codex on this computer once, then retry." };
     statusAt = Date.now();
     return statusCache;
@@ -111,7 +243,14 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       if (!boardId) return sendJson(response, 400, { error: "Board is not ready" }, origin);
       if (path === "/interrupt") {
         const active = running.get(boardId);
-        if (active) { active.cancelled = true; active.child.kill(); }
+        if (active) {
+          active.cancelled = true;
+          if (active.mode === "app-server" && active.threadId && active.turnId) {
+            await appServer.request("turn/interrupt", { threadId: active.threadId, turnId: active.turnId });
+          } else if (active.mode === "exec") {
+            active.child.kill();
+          }
+        }
         running.delete(boardId);
         return sendJson(response, 200, { ok: true }, origin);
       }
@@ -121,21 +260,17 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       if (!connection.ready) return sendJson(response, 503, { error: connection.error }, origin);
       if (running.has(boardId)) return sendJson(response, 409, { error: "Codex is already working" }, origin);
 
-      const prompt = [
-        "You are Nyx, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
-        "If observe_board reports a task description that is new to this conversation, call unsolvable.read_task_description once, retain its contents as the task context, and do not mention or summarize the upload unless the student asks.",
-        "Understand requests in any language, but respond only in English. Every spoken field (speech or narration) and your final reply must be English, even when the student uses Russian.",
-        "Call unsolvable.observe_board exactly once at the start of the turn. Never call it twice in one turn, including after a board write: write-tool results already contain the updated event version and board summary. Verify each distinct algebra transition or arithmetic equation at most once; reuse that result for the rest of the turn.",
-        "For an explicit check or correction request involving a wrong numeric equation, use unsolvable.verify_arithmetic_equation on the proposed correction, mark only the mistaken stroke with unsolvable.board_feedback, then use unsolvable.board_write_equation to handwrite the valid equation in nearby free space. For example, if the student wrote 1 + 2 = 4, underline the 4 and write 1 + 2 = 3. For passive observation, respect the selected hint level and avoid giving away the full answer unless asked.",
-        "When writing math, use ordinary lowercase variable letters and plain expressions such as x^3/3. Unsolvable renders ^ as a raised power, / as a fraction, and _ as a subscript. Do not send LaTeX commands or spell out punctuation. For a definite integral, evaluate the bounds; do not equate it to an indefinite antiderivative with +C.",
-        "Use board_feedback, board_draw, board_erase, and board_say to teach on the board. For a diagram outside the fixed templates, use board_write_text for short labels and board_draw_arrow for arrows at observed board coordinates. These are editable pen strokes, and arrows do not attach to shapes. Respect the board's hint level.",
-        "Use the fewest board actions that satisfy the request. Do not claim the board lacks text or arrows: check the available tools. If a requested layout still cannot be made with them, explain the specific missing operation and offer a usable fallback.",
-        "Send at most one spoken message per turn. If you use multiple board tools, put speech or narration in only one tool call and leave the other spoken fields empty. Do not call board_say after a tool that already speaks.",
-        "Do not edit source files or run shell commands. Give a short final response for the student's status display.",
-        `Board ID: ${boardId}`,
-        `Request trigger: ${String(body.trigger || "explicit").slice(0, 40)}`,
-        `Student request: ${message}`,
-      ].join("\n");
+      const trigger = String(body.trigger || "explicit").slice(0, 40);
+      if (appServer?.isRunning()) {
+        const result = await runAppServerTurn(boardId, message, trigger);
+        return sendJson(response, 200, {
+          ok: true,
+          reply: result.reply.trim() || "Board updated.",
+          threadId: result.threadId,
+        }, origin);
+      }
+
+      const prompt = `${NYX_INSTRUCTIONS}\n${createTurnPrompt(boardId, trigger, message)}`;
       const config = [
         "--model", nyxModel,
         "-c", `model_reasoning_effort=${JSON.stringify(nyxReasoningEffort)}`,
@@ -143,7 +278,8 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
         "-c", "mcp_servers.unsolvable.enabled=true",
         "-c", 'mcp_servers.unsolvable.default_tools_approval_mode="approve"',
       ];
-      const previous = sessions.get(boardId) ?? null;
+      const savedSession = sessions.get(boardId);
+      const previous = savedSession?.mode === "exec" ? savedSession.threadId : null;
       const args = previous
         ? ["exec", "resume", "--json", "--ignore-user-config", "--skip-git-repo-check", ...config, previous, prompt]
         : ["exec", "--json", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check", ...config, prompt];
@@ -152,7 +288,7 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       let currentRun = null;
       const result = await runCodex(binary, args, env, (event) => {
         if (event.type === "bridge.child") {
-          currentRun = { child: event.child, cancelled: false };
+          currentRun = { mode: "exec", child: event.child, cancelled: false };
           running.set(boardId, currentRun);
         }
         if (event.type === "thread.started" && event.thread_id) threadId = event.thread_id;
@@ -161,7 +297,7 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       const active = running.get(boardId);
       if (active?.child === result.child) running.delete(boardId);
       if (currentRun?.cancelled) return sendJson(response, 409, { error: "Codex turn stopped." }, origin);
-      if (threadId) sessions.set(boardId, threadId);
+      if (threadId) sessions.set(boardId, { mode: "exec", threadId });
       if (result.code !== 0) {
         const error = /unable to open database file|failed to initialize in-process app-server client/i.test(result.stderr)
           ? "Codex could not write to its local home. Start Unsolvable from a normal terminal with access to your Codex profile."
@@ -181,6 +317,12 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
   const address = server.address();
   return {
     url: `http://127.0.0.1:${address.port}`,
-    close: () => { for (const active of running.values()) active.child.kill(); server.close(); },
+    close: () => {
+      for (const active of running.values()) {
+        if (active.mode === "exec") active.child.kill();
+      }
+      appServer?.close();
+      server.close();
+    },
   };
 }
