@@ -10,6 +10,7 @@ import {
   ChevronDown,
   Circle,
   CircleStop,
+  ClipboardList,
   Eraser,
   Hand,
   Highlighter,
@@ -68,8 +69,10 @@ import { createEnglishSpeechController } from "@/lib/english-speech.mjs";
 import { boundsIntersect, buildShapePaths, isEditableTarget, selectionBounds, type ShapeTool } from "@/lib/board-interactions.mjs";
 import { PracticeActionSearch } from "@/components/board/practice-action-search";
 import { PracticeClocks } from "@/components/board/practice-clocks";
+import { TaskWorkspace, taskPrompts } from "@/components/board/task-workspace";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { HINT_LEVELS } from "../bridge/hint-policy.mjs";
 
 type Tool = "select" | "pen" | "highlighter" | "eraser" | "hand" | ShapeTool;
 type DrawingTool = "pen" | "highlighter" | ShapeTool;
@@ -202,6 +205,8 @@ export default function TutorBoard({
   const [titleDraft, setTitleDraft] = useState(initialTitle);
   const [isRenamingTitle, setIsRenamingTitle] = useState(false);
   const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [taskDescription, setTaskDescription] = useState<TaskDescription>();
+  const [tasksOpen, setTasksOpen] = useState(false);
   const [printPages, setPrintPages] = useState<Array<{ name: string; dataUrl: string }>>([]);
   const undoRef = useRef<Page[][]>([]);
   const redoRef = useRef<Page[][]>([]);
@@ -950,6 +955,7 @@ export default function TutorBoard({
           setHintLevel(clamp(Number(payload.board.state.hintLevel) || 2, 0, 5));
           setAutoObserve(payload.board.state.autoObserve === true);
           taskDescriptionRef.current = payload.board.state.taskDescription;
+          setTaskDescription(payload.board.state.taskDescription);
         }
         if (shouldApplyRemote && payload.board?.title) {
           setBoardTitle(payload.board.title);
@@ -1426,17 +1432,33 @@ export default function TutorBoard({
     const previousTaskDescription = taskDescriptionRef.current;
     try {
       const task = await extractTaskFile(file);
-      taskDescriptionRef.current = {
+      const nextTask = {
         ...task,
         importedAt: Date.now(),
       };
+      taskDescriptionRef.current = nextTask;
+      setTaskDescription(nextTask);
       const result = await syncBoard({ kind: "explicit" });
       if (!result) throw new Error("The shared board is still initializing.");
       setToast(`${file.name} is ready in Nyx's task memory.`);
+      setTasksOpen(true);
     } catch (error) {
       taskDescriptionRef.current = previousTaskDescription;
+      setTaskDescription(previousTaskDescription);
       setToast(error instanceof Error ? error.message : "The task could not be given to Nyx.");
     }
+  };
+
+  const submitTaskAnswers = (answers: string[]) => {
+    if (!taskDescription) return;
+    const prompts = taskPrompts(taskDescription);
+    const response = answers
+      .map((answer, index) => `${index + 1}. ${prompts[index] ? `${prompts[index]}\nAnswer: ` : ""}${answer}`)
+      .join("\n\n");
+    void sendTurn(
+      `Check my submitted answers for ${taskDescription.sourceName}. Keep the feedback within the selected help level.\n\n${response}`,
+      "task_submission",
+    );
   };
 
   const createNewBoard = () => {
@@ -1553,6 +1575,20 @@ export default function TutorBoard({
             onExportPng={exportToPng}
             onExportPdf={exportToPdf}
           />
+
+          {taskDescription && (
+            <Button
+              className="h-8 w-auto min-w-0 gap-2 rounded-lg border-border/80 bg-background/70 px-3 text-[11px] font-semibold shadow-none"
+              variant="outline"
+              size="sm"
+              type="button"
+              onClick={() => setTasksOpen(true)}
+            >
+              <ClipboardList size={15} />
+              <span className="hidden sm:inline">Tasks</span>
+              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{taskPrompts(taskDescription).length}</span>
+            </Button>
+          )}
         </div>
 
         <PracticeClocks onTimerComplete={() => setToast("Timer complete — pause and check your approach.")} />
@@ -1633,7 +1669,20 @@ export default function TutorBoard({
 
           <div className="hint-control">
             <span>Help</span>
-            <div>{[0, 1, 2, 3, 4, 5].map((level) => <button type="button" key={level} className={hintLevel === level ? "is-active" : ""} onClick={() => setHintLevel(level)} aria-label={`Hint level ${level}`}>{level}</button>)}</div>
+            <div>
+              {HINT_LEVELS.map(({ level, label, instruction }) => (
+                <button
+                  type="button"
+                  key={level}
+                  className={hintLevel === level ? "is-active" : ""}
+                  onClick={() => setHintLevel(level)}
+                  aria-label={`Help level ${level}: ${label}. ${instruction}`}
+                  aria-pressed={hintLevel === level}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="tutor-composer">
@@ -1677,6 +1726,14 @@ export default function TutorBoard({
           </section>
         </div>
       )}
+
+      <TaskWorkspace
+        key={taskDescription?.importedAt ?? "no-task"}
+        task={taskDescription}
+        open={tasksOpen}
+        onOpenChange={setTasksOpen}
+        onSubmit={submitTaskAnswers}
+      />
     </main>
   );
 }

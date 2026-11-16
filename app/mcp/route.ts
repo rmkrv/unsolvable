@@ -6,6 +6,7 @@ import { makeId, strokeBounds, type BoardDocument, type Stroke } from "@/lib/dom
 import { aggregateStrokeBounds } from "@/lib/domain/board/operations";
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { boardToolAnnotations } from "@/lib/domain/tutor/mcp-tool-policy";
+import { hintPolicy } from "../../bridge/hint-policy.mjs";
 import { getMcpOAuth } from "@/lib/server/auth/mcp-oauth";
 import { resolveViewerForAuthSubject } from "@/lib/server/auth/viewer-service";
 import { applyTutorBoardCommands, enqueueTutorAction, markMcpConnected, readTutorBoard } from "@/lib/server/boards/board-service";
@@ -87,10 +88,12 @@ function summarizeBoard(stateValue: unknown) {
   const zoom = Number(viewport.zoom) || 1;
   const cssWidth = Number(snapshot.cssWidth) || 1200;
   const cssHeight = Number(snapshot.cssHeight) || 800;
+  const selectedHintPolicy = hintPolicy(state.hintLevel);
   return {
     boardId: state.boardId,
     activePageId: state.activePageId,
     hintLevel: state.hintLevel,
+    hintPolicy: selectedHintPolicy,
     autoObserve: state.autoObserve === true,
     viewport,
     snapshot: state.snapshot,

@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { dynamicTools, sanitizeBoardAction } from "../bridge/actions.mjs";
+import { HINT_LEVELS, hintPolicy } from "../bridge/hint-policy.mjs";
+
+test("defines distinct behavior for every help level", () => {
+  assert.equal(HINT_LEVELS.length, 6);
+  assert.deepEqual(HINT_LEVELS.map(({ level }) => level), [0, 1, 2, 3, 4, 5]);
+  assert.match(hintPolicy(0).instruction, /Do not provide a hint/);
+  assert.match(hintPolicy(5).instruction, /complete worked solution/);
+  assert.equal(hintPolicy(99).level, 5);
+  assert.equal(hintPolicy(undefined).level, 2);
+});
 
 test("exposes direct board mutation tools for agent/user capability parity", () => {
   const names = new Set(dynamicTools.map((tool) => tool.name));

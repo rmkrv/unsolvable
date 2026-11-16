@@ -1,48 +1,47 @@
-# Practice controls design QA
+# Task workspace design QA
 
 ## Evidence
 
-- Source visual truth: `C:/Users/user/AppData/Local/Temp/codex-clipboard-cc76ede9-4a8b-452e-89c5-2ebb92009979.png` (action-palette issue state, 773 × 530 px at 120 dpi), `codex-clipboard-2e080d62-7b40-4352-89cf-145b806350b6.png` (LeetCode clock-density reference, 268 × 193 px at 120 dpi), `codex-clipboard-b4d531e7-75ec-4c35-99c3-e06f72f2e1a3.png` (compact board-name target, 167 × 65 px at 120 dpi), and `codex-clipboard-f0c0690b-a26c-4cdc-be20-502c9e0d7597.png` (oversized rename issue state) in the same temp directory.
-- Browser-rendered implementation: `C:/Users/user/.codex/visualizations/2026/11/11/01a1cc4a-f458-7670-af4e-53c8156ac46c/practice-palette-implementation.png` (749 × 667 px), `practice-timer-implementation.png` (749 × 667 px), and `board-title-edit-implementation.png` (1200 × 800 px) in the same evidence directory.
-- Comparison evidence: `C:/Users/user/.codex/visualizations/2026/11/11/01a1cc4a-f458-7670-af4e-53c8156ac46c/practice-palette-comparison.png`, `practice-palette-focused-comparison.png`, `practice-timer-comparison.png`, and `board-title-comparison.png`.
-- Browser viewport: 750 × 667 CSS px, device pixel ratio 1.25. Browser screenshots were normalized by the capture surface to approximately CSS-pixel dimensions. The source issue capture and implementation have different outer viewports, so the focused component regions were compared without upscaling either image.
-- Additional title viewport: 1200 × 795 CSS px at device pixel ratio 1.0. The focused comparison uses a 190 × 65 crop beside the native 167 × 65 reference without scaling.
-- State: practice board, action palette open with its first result selected; clock popover open in timer mode with the 25-minute preset selected; board-name input focused with its value selected.
+- Source visual truth: `C:/Users/user/AppData/Local/Temp/codex-clipboard-4c132040-5f05-49a0-a260-fba2a43e3e21.png` (1,917 × 846 px). The source is a hand-drawn structural reference over the desktop whiteboard: a centered tasks panel, numbered answers, and a submit action.
+- Browser-rendered implementation: `C:/Users/user/.codex/visualizations/2026/11/15/01a1e1a2-7b08-7ff1-86db-326e0a88cac6/task-workspace-implementation.jpg` (749 × 667 px).
+- Full-view comparison: `C:/Users/user/.codex/visualizations/2026/11/15/01a1e1a2-7b08-7ff1-86db-326e0a88cac6/task-workspace-comparison.png`.
+- Focused panel comparison: `C:/Users/user/.codex/visualizations/2026/11/15/01a1e1a2-7b08-7ff1-86db-326e0a88cac6/task-workspace-focused-comparison.png`.
+- Browser viewport: 749 × 667 CSS px at the in-app browser's default density. The source and implementation use different viewport sizes, so the full view preserves each source's native aspect ratio and the focused comparison aligns the task-panel regions by height rather than claiming pixel-for-pixel equivalence.
+- State: practice board with a three-question text task imported, task workspace open, all answers completed, progress full, and submit enabled.
 
 ## Findings
 
 - No actionable P0, P1, or P2 differences remain.
-- Fonts and typography: the implementation uses the product's existing UI font and shadcn hierarchy. Primary labels and muted descriptions remain readable in the selected state.
-- Spacing and layout rhythm: the action palette is intentionally narrower and denser than the issue capture. The redundant keyboard-help footer is removed. The clock trigger is 38 × 32 CSS px and the open panel is 288 px wide. Board rename now stays inside a 176 × 52 CSS px header block with a 28 px-high input, so it no longer expands across the top bar.
-- Colors and tokens: the previous near-black selected row was replaced by the shadcn accent/background and foreground token pair. Both the primary and secondary text retain contrast.
-- Image quality and assets: no raster product imagery is involved. Existing Lucide icons remain sharp at the rendered sizes and are consistent with the current application icon set.
-- Copy and content: action labels and descriptions are intact; the unwanted `↑↓ move / PgUp PgDn jump / Enter open` helper copy is absent.
+- Fonts and typography: the implementation uses the product's existing sans-serif UI hierarchy, with a clear title, compact source-file label, readable prompts, and answer text sized consistently with the board controls.
+- Spacing and layout rhythm: the task workspace is centered over the board, uses a vertically scrollable answer region, keeps the submit action anchored in the footer, and preserves the numbered-row structure from the sketch. At a 700 × 700 responsive viewport the dialog measured 512 × 614 px with no horizontal overflow.
+- Colors and visual tokens: the panel uses the existing shadcn neutral tokens and product blue for progress and focus. The dimmed whiteboard remains visible enough to preserve context without competing with the task.
+- Image quality and assets: the reference does not require custom imagery. Existing Lucide icons remain sharp and consistent with the product's current icon set. Image-only task imports use the actual uploaded task image rather than a placeholder.
+- Copy and content: `Tasks`, numbered prompts, answer fields, completion progress, source filename, and `Submit answers` map directly to the requested structure. The additional Nyx-checking note explains the existing submission behavior.
 
 ## Interaction verification
 
-- Typing `open` automatically selected `Open previous`, the first filtered result.
-- PageDown moved selection to `Open board`; PageUp moved it back to `Open previous`.
-- The stopwatch/timer mode switch, timer presets, and compact start/reset controls rendered correctly.
-- Moving from the open clock to a distant board tool closed the popover and returned the trigger to `aria-expanded="false"`; the implementation uses a 48 px (about 3 rem) safety halo around the trigger and panel.
-- Board rename exposes no save/cancel buttons. Enter saved `Calculus practice`; clicking the Actions control saved `Algebra practice` before opening the palette. Escape remains available to cancel.
-- The current run produced no console errors. Two earlier development-overlay errors were from the stale hot-reload process and did not recur after the preview server was restarted.
+- Imported a three-question text task through the existing **Give task to Nyx** action.
+- Confirmed the task workspace opens automatically after a successful import and can be reopened from the new header **Tasks** control.
+- Confirmed numbered prompts are derived from the imported task text.
+- Confirmed submit remains disabled until all three answers are filled, progress updates to `3 of 3 answered`, and submit then enables.
+- Confirmed submit closes the dialog immediately while the existing Nyx request continues, and the header task control remains available.
+- Confirmed the browser console contained no errors or warnings during the tested flow.
 
 ## Comparison history
 
-- Earlier P1: the selected action used a near-black fill, reducing secondary-text readability and visually overpowering the rest of the palette. Fixed with the shadcn accent tokens; post-fix evidence is in `practice-palette-focused-comparison.png`.
-- Earlier P2: the keyboard-help footer consumed space without helping the normal workflow. Removed; post-fix evidence shows the list ending without the footer.
-- Earlier P2: the clock required an explicit second toggle to close and occupied more top-bar attention than necessary. Replaced with a 38 × 32 trigger and distance-based dismissal; post-fix evidence is in `practice-timer-comparison.png` and the interaction check above.
-- Earlier P1: board rename expanded into a large high-contrast field with detached confirmation buttons, overpowering the header and shifting adjacent controls. Replaced with a compact shadcn input in the existing title footprint; confirmation is now Enter or click-away. Post-fix evidence is in `board-title-comparison.png`.
+- Earlier interaction issue: the dialog stayed in `Submitting…` until Nyx completed its response. Fixed by dispatching the existing Nyx turn without blocking dialog closure; the browser retest confirmed immediate closure after submission.
+- No visual P0/P1/P2 correction loop was needed after the first rendered comparison.
 
 ## Implementation checklist
 
-- [x] Use existing shadcn/ui primitives for the palette and clock popover.
-- [x] Keep selected action text readable.
-- [x] Remove the keyboard-help footer.
-- [x] Preserve first-result selection and PageUp/PageDown navigation.
-- [x] Auto-close the clock beyond the safe pointer distance.
-- [x] Keep board rename compact and confirm through Enter or click-away without confirmation buttons.
-- [x] Verify tests, type checking, lint, production build, browser rendering, interactions, and console.
+- [x] Use shadcn primitives rather than daisyUI for the new task UI.
+- [x] Reuse the existing board-scoped task description and Nyx submission flow.
+- [x] Add a compact header entry point.
+- [x] Open the workspace automatically after import.
+- [x] Render numbered task prompts and answer inputs.
+- [x] Support image-only tasks with the original task image.
+- [x] Show completion progress and validate submission.
+- [x] Verify type checking, tests, lint, production build, browser rendering, interactions, responsive layout, and console output.
 
 ## Follow-up polish
 

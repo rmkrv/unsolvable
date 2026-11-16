@@ -1,3 +1,5 @@
+import { HINT_POLICY_PROMPT } from "./hint-policy.mjs";
+
 const DRAW_TEMPLATES = new Set([
   "axes",
   "parabola",
@@ -218,7 +220,7 @@ export const dynamicTools = [
   {
     type: "function",
     name: "board_set_hint_level",
-    description: "Set the shared tutoring hint level from 0 to 5.",
+    description: `Set the shared tutoring help level. The behavior mapping is:\n${HINT_POLICY_PROMPT}`,
     inputSchema: {
       type: "object",
       properties: { level: { type: "integer", minimum: 0, maximum: 5 }, expectedVersion: { type: "integer", minimum: 0 } },
