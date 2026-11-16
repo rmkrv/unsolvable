@@ -8,7 +8,15 @@ import { HOME_CACHE_TAG } from "@/lib/server/home/dashboard-data";
 import { errorResponse } from "@/lib/server/http/api-errors";
 import { parseBoundedLimit, routeError } from "@/lib/server/http/route-utils";
 
-const createBoardSchema = z.object({ title: z.string().trim().min(1).max(120).optional() }).strict();
+const createBoardSchema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+  topicTest: z.object({
+    topicSlug: z.string().trim().min(1).max(80),
+    topicName: z.string().trim().min(1).max(120),
+    subtopic: z.string().trim().min(1).max(180),
+    mode: z.enum(["preparation", "test"]),
+  }).strict().optional(),
+}).strict();
 
 export async function GET(request: Request) {
   try {
@@ -25,7 +33,7 @@ export async function POST(request: Request) {
     const viewer = await requireRequestViewer();
     const parsed = createBoardSchema.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) return errorResponse("invalid_input", "Invalid board details.", 400);
-    const board = await createTutorBoard(viewer, parsed.data.title);
+    const board = await createTutorBoard(viewer, parsed.data.title, parsed.data.topicTest);
     revalidateTag(HOME_CACHE_TAG, "max");
     return NextResponse.json({ board }, { status: 201 });
   } catch (error) {

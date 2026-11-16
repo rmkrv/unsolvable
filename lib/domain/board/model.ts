@@ -1,3 +1,5 @@
+import type { TopicTestSession } from "@/lib/domain/topic-test";
+
 export type Point = { x: number; y: number; pressure: number; t: number };
 
 export type Stroke = {
@@ -54,6 +56,7 @@ export type BoardDocument = {
   autoObserve?: boolean;
   request?: { message: string; trigger: string; at: number } | null;
   taskDescription?: TaskDescription;
+  topicTest?: TopicTestSession;
 };
 
 // don't change this
@@ -73,6 +76,7 @@ export function createEmptyBoardDocument(boardId: string): BoardDocument {
 
 export function isBoardDocumentEmpty(value: unknown) {
   if (!value || typeof value !== "object") return false;
+  if ((value as { topicTest?: unknown }).topicTest) return false;
   const pages = (value as { pages?: unknown }).pages;
   if (!Array.isArray(pages)) return false;
   return pages.every((page) => {

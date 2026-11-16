@@ -16,6 +16,7 @@ export type BoardSummary = {
   eventVersion: number;
   lastOpenedAt: number;
   updatedAt: number;
+  topicTest?: import("@/lib/domain/topic-test").TopicTestSession;
 };
 
 export type StoredTutorAction = {
@@ -43,6 +44,7 @@ export interface BoardRepository {
   markOpened(userId: string, boardId: string): Promise<boolean>;
   saveForUser(input: SaveBoardInput): Promise<{ eventVersion: number; updatedAt: number; lastMcpAt: number | null }>;
   updateForUser(input: UpdateBoardInput): Promise<{ eventVersion: number; updatedAt: number; lastMcpAt: number | null } | null>;
+  deleteForUser(userId: string, boardId: string): Promise<boolean>;
   deleteEmptyForUser(userId: string, boardId: string): Promise<boolean>;
   markTutorConnected(userId: string, boardId?: string): Promise<number>;
   enqueueTutorAction(userId: string, boardId: string, action: unknown): Promise<number | null>;

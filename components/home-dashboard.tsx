@@ -20,7 +20,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import type { Viewer } from "@/lib/server/auth/viewer";
 import type { BoardSummary } from "@/lib/server/boards/board-repository";
 import type { StudentHomeInsights as HomeInsights } from "@/lib/server/students/student-summary-repository";
@@ -90,6 +89,7 @@ export function HomeDashboardHeader({ user, isPreview = false }: { user: HomeUse
 
 export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: BoardSummary[]; insights: HomeInsights }) {
   const recent = recentBoards[0];
+  const latestAnalysis = recentBoards.find((board) => board.topicTest?.analysis)?.topicTest;
   const boardHref = "/boards/current";
 
   return (
@@ -119,19 +119,13 @@ export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: B
         <CardHeader>
           <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-foreground"><Target size={18} /></div>
           <CardTitle className="mt-3 text-lg">Next focus</CardTitle>
-          <CardDescription>{insights.weakSpot ? "Based on your recent work" : "Build enough evidence to find a focus"}</CardDescription>
+          <CardDescription>{latestAnalysis?.analysis ? `Latest grade: ${latestAnalysis.analysis.grade}` : insights.weakSpot ? "Turn your practice evidence into a grade" : "Build enough evidence to find a focus"}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {insights.weakSpot ? (
+          {latestAnalysis?.analysis ? (
             <>
-              <div>
-                <div className="flex items-end justify-between gap-3">
-                  <div><p className="font-semibold">{insights.weakSpot.skillName}</p><p className="mt-1 text-xs text-muted-foreground">{insights.weakSpot.evidenceCount} evidence points</p></div>
-                  <p className="text-2xl font-semibold tracking-tight">{insights.weakSpot.score}%</p>
-                </div>
-                <Progress className="mt-4" value={insights.weakSpot.score} />
-              </div>
-              <p className="text-xs leading-5 text-muted-foreground">This estimate changes as you practice. It is a starting point, not a label.</p>
+              <div className="flex items-start gap-4"><span className="grid size-12 shrink-0 place-items-center rounded-xl bg-muted text-xl font-semibold">{latestAnalysis.analysis.grade}</span><div><p className="font-semibold">{latestAnalysis.subtopic}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{latestAnalysis.analysis.summary}</p></div></div>
+              <p className="rounded-lg bg-muted p-3 text-xs leading-5 text-muted-foreground"><strong className="text-foreground">Next:</strong> {latestAnalysis.analysis.improvements[0]}</p>
             </>
           ) : (
             <p className="rounded-lg bg-muted p-4 text-sm leading-6 text-muted-foreground">Complete a few attempts and the first useful skill to revisit will appear here.</p>
@@ -139,7 +133,7 @@ export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: B
         </CardContent>
         <CardFooter>
           <Button asChild variant="outline" className="w-full">
-            <Link href="/weak-spots">{insights.weakSpot ? "Practice this skill" : "Take a diagnostic"}<ArrowRight /></Link>
+            <Link href={latestAnalysis?.analysis ? "/analysis" : "/topics"}>{latestAnalysis?.analysis ? "View analysis" : "Take a diagnostic"}<ArrowRight /></Link>
           </Button>
         </CardFooter>
       </Card>

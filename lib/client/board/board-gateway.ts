@@ -85,7 +85,7 @@ export function createHttpBoardGateway(fetcher: typeof fetch = fetch): BoardGate
       return jsonOrError<{ eventVersion: number; updatedAt: number }>(response, "Could not sync the shared board.");
     },
     async deleteIfEmpty(boardId, { keepalive = false } = {}) {
-      const response = await fetcher(`/api/student/boards/${encodeURIComponent(boardId)}`, {
+      const response = await fetcher(`/api/student/boards/${encodeURIComponent(boardId)}?ifEmpty=true`, {
         method: "DELETE",
         keepalive,
       });

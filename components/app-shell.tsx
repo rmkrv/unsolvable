@@ -43,7 +43,7 @@ const navigation = [
   { id: "practice" as const, label: "Practice", href: "/boards/current", icon: BookOpen },
   { id: "topics" as const, label: "Topics", href: "/topics", icon: LibraryBig },
   { id: "calendar" as const, label: "Schedule", href: "/calendar", icon: CalendarDays },
-  { id: "weak-spots" as const, label: "Weak spots", href: "/weak-spots", icon: Target },
+  { id: "weak-spots" as const, label: "Analysis", href: "/analysis", icon: Target },
   { id: "friends" as const, label: "Friends", href: "/friends", icon: Users },
   { id: "boards" as const, label: "Boards", href: "/boards", icon: LayoutGrid },
 ];

@@ -54,6 +54,7 @@ export class PostgresBoardRepository implements BoardRepository {
         eventVersion: boards.eventVersion,
         lastOpenedAt: userBoardActivity.lastOpenedAt,
         updatedAt: boards.updatedAt,
+        state: boards.state,
       })
       .from(boardMembers)
       .innerJoin(boards, eq(boards.id, boardMembers.boardId))
@@ -72,6 +73,7 @@ export class PostgresBoardRepository implements BoardRepository {
       eventVersion: row.eventVersion,
       lastOpenedAt: (row.lastOpenedAt ?? row.updatedAt).getTime(),
       updatedAt: row.updatedAt.getTime(),
+      topicTest: readTopicTest(row.state),
     }));
   }
 
@@ -188,6 +190,16 @@ export class PostgresBoardRepository implements BoardRepository {
           lastMcpAt: updated.lastMcpAt?.getTime() ?? null,
         }
       : null;
+  }
+
+  async deleteForUser(userId: string, boardId: string) {
+    const board = await findAuthorizedBoard(this.db, userId, boardId);
+    if (!board || board.role !== "owner") return false;
+    const deleted = await this.db
+      .delete(boards)
+      .where(eq(boards.id, board.id))
+      .returning({ id: boards.id });
+    return deleted.length === 1;
   }
 
   async deleteEmptyForUser(userId: string, boardId: string) {
@@ -313,4 +325,11 @@ function toStoredBoard(
 
 function canEdit(role: string) {
   return role === "owner" || role === "editor";
+}
+
+function readTopicTest(state: unknown) {
+  if (!state || typeof state !== "object") return undefined;
+  const topicTest = (state as { topicTest?: unknown }).topicTest;
+  if (!topicTest || typeof topicTest !== "object") return undefined;
+  return topicTest as import("@/lib/domain/topic-test").TopicTestSession;
 }

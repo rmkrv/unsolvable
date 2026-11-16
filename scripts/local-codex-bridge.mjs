@@ -256,7 +256,7 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
         running.delete(boardId);
         return sendJson(response, 200, { ok: true }, origin);
       }
-      const message = String(body.message || "").slice(0, 800).trim();
+      const message = String(body.message || "").slice(0, 6000).trim();
       if (!message) return sendJson(response, 400, { error: "Message is empty" }, origin);
       const connection = await status();
       if (!connection.ready) return sendJson(response, 503, { error: connection.error }, origin);

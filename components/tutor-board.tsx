@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createTutorTransport } from "@/lib/client/tutor/tutor-transport";
 import {
   ArrowUpRight,
+  BarChart3,
   Cable,
   Check,
   ChevronDown,
@@ -22,6 +23,7 @@ import {
   Square,
   Minus,
   Redo2,
+  ShieldCheck,
   Sparkles,
   Undo2,
   Wifi,
@@ -70,9 +72,11 @@ import { boundsIntersect, buildShapePaths, isEditableTarget, selectionBounds, ty
 import { PracticeActionSearch } from "@/components/board/practice-action-search";
 import { PracticeClocks } from "@/components/board/practice-clocks";
 import { TaskWorkspace, taskPrompts } from "@/components/board/task-workspace";
+import { TopicTestStatus } from "@/components/board/topic-test-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HINT_LEVELS } from "../bridge/hint-policy.mjs";
+import { parseGeneratedTasks, parseTopicTestAnalysis, type TopicTestSession } from "@/lib/domain/topic-test";
 
 type Tool = "select" | "pen" | "highlighter" | "eraser" | "hand" | ShapeTool;
 type DrawingTool = "pen" | "highlighter" | ShapeTool;
@@ -193,6 +197,7 @@ export default function TutorBoard({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bridgeState, setBridgeState] = useState<BridgeState>("connecting");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [boardReady, setBoardReady] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [connectionTarget, setConnectionTarget] = useState<ConnectionTarget>("codex");
   const [hintLevel, setHintLevel] = useState(2);
@@ -207,6 +212,8 @@ export default function TutorBoard({
   const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [taskDescription, setTaskDescription] = useState<TaskDescription>();
   const [tasksOpen, setTasksOpen] = useState(false);
+  const [topicTest, setTopicTest] = useState<TopicTestSession>();
+  const [testStatusOpen, setTestStatusOpen] = useState(false);
   const [printPages, setPrintPages] = useState<Array<{ name: string; dataUrl: string }>>([]);
   const undoRef = useRef<Page[][]>([]);
   const redoRef = useRef<Page[][]>([]);
@@ -239,6 +246,8 @@ export default function TutorBoard({
   const applyingRemoteStateRef = useRef(false);
   const requestRef = useRef<{ message: string; trigger: string; at: number } | null>(null);
   const taskDescriptionRef = useRef<TaskDescription | undefined>(undefined);
+  const topicTestRef = useRef<TopicTestSession | undefined>(undefined);
+  const testOperationRef = useRef(false);
   const previousToolRef = useRef<Tool | null>(null);
   const temporaryShapeToolRef = useRef<{ key: string; tool: ShapeTool; previousTool: Tool } | null>(null);
   const shiftPressedRef = useRef(false);
@@ -250,6 +259,7 @@ export default function TutorBoard({
     () => pages.find((page) => page.id === activePageId) ?? pages[0],
     [activePageId, pages],
   );
+  const nyxLocked = topicTest?.mode === "test" && topicTest.status === "ready";
 
   useEffect(() => {
     const pending = pendingBoardCleanup.get(boardId);
@@ -923,6 +933,7 @@ export default function TutorBoard({
           autoObserve: autoObserveRef.current,
           request: requestRef.current,
           taskDescription: taskDescriptionRef.current,
+          topicTest: topicTestRef.current,
         },
         snapshotDataUrl,
         title,
@@ -956,6 +967,9 @@ export default function TutorBoard({
           setAutoObserve(payload.board.state.autoObserve === true);
           taskDescriptionRef.current = payload.board.state.taskDescription;
           setTaskDescription(payload.board.state.taskDescription);
+          topicTestRef.current = payload.board.state.topicTest;
+          setTopicTest(payload.board.state.topicTest);
+          if (["generating", "analyzing", "error"].includes(payload.board.state.topicTest?.status || "")) setTestStatusOpen(true);
         }
         if (shouldApplyRemote && payload.board?.title) {
           setBoardTitle(payload.board.title);
@@ -1002,6 +1016,7 @@ export default function TutorBoard({
 
     async function connect() {
       setBridgeState("connecting");
+      setBoardReady(false);
       hydrationCompleteRef.current = false;
       saveCoordinatorRef.current?.stop();
       setSessionId(boardId);
@@ -1014,6 +1029,7 @@ export default function TutorBoard({
           serverVersionRef.current = initialVersion;
           saveCoordinatorRef.current?.start(initialVersion);
           hydrationCompleteRef.current = true;
+          setBoardReady(true);
           setBridgeState((current) => (current === "authorized" ? current : "offline"));
           let pollCount = 0;
           timer = setInterval(() => {
@@ -1039,6 +1055,7 @@ export default function TutorBoard({
     return () => {
       disposed = true;
       hydrationCompleteRef.current = false;
+      setBoardReady(false);
       saveCoordinatorRef.current?.stop();
       if (timer) clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -1071,10 +1088,10 @@ export default function TutorBoard({
     async (message: string, trigger = "explicit") => {
       if (!sessionId) {
         setToast("The shared board is still initializing.");
-        return;
+        return undefined;
       }
       if (bridgeState === "thinking" || bridgeState === "drawing") await interrupt();
-      requestRef.current = { message: message.slice(0, 800), trigger, at: Date.now() };
+      requestRef.current = { message: message.slice(0, 6000), trigger, at: Date.now() };
       setToast(localTutor ? "Starting Codex…" : "Request shared. Continue in your connected AI chat to let Unsolvable respond.");
       try {
         await syncBoard({ captureSnapshot: true, kind: "explicit" });
@@ -1083,18 +1100,62 @@ export default function TutorBoard({
           const result = await tutorTransport.sendTurn({ boardId: sessionId, message, trigger });
           setToast(result.reply || "Codex finished.");
           setBridgeState("authorized");
-          return;
+          return result.reply;
         }
         if (bridgeState === "offline") setConnectionOpen(true);
       } catch (error) {
         setBridgeState("offline");
         setToast(error instanceof Error ? error.message : "Could not share the request with the AI assistant.");
+        return undefined;
       }
     },
     [bridgeState, interrupt, sessionId, syncBoard],
   );
 
+  useEffect(() => {
+    if (!topicTest || topicTest.status !== "generating" || !sessionId || !boardReady || testOperationRef.current) return;
+    testOperationRef.current = true;
+    void (async () => {
+      const reply = await sendTurn(
+        `Create a five-question ${topicTest.mode} set for “${topicTest.subtopic}” in ${topicTest.topicName}. Start with a basic check and increase the complexity with every question. Use original, self-contained math problems. Do not include answers, hints, solutions, commentary, or markdown. Return exactly five lines numbered 1. through 5.`,
+        "topic_test_generation",
+      );
+      const tasks = parseGeneratedTasks(reply || "");
+      if (tasks.length !== 5) {
+        const failed = { ...topicTest, status: "error" as const, errorStage: "generation" as const, error: "Nyx did not return five readable questions. Try generating the set again." };
+        topicTestRef.current = failed;
+        setTopicTest(failed);
+        await syncBoard({ kind: "explicit" });
+        return;
+      }
+      const generatedTask: TaskDescription = {
+        sourceName: `${topicTest.subtopic} · Nyx ${topicTest.mode}`,
+        mediaType: "text/plain",
+        importedAt: Date.now(),
+        text: tasks.map((task, index) => `${index + 1}. ${task}`).join("\n"),
+      };
+      const ready = { ...topicTest, status: "ready" as const, error: undefined, errorStage: undefined };
+      taskDescriptionRef.current = generatedTask;
+      topicTestRef.current = ready;
+      setTaskDescription(generatedTask);
+      setTopicTest(ready);
+      if (ready.mode === "test") {
+        hintLevelRef.current = 0;
+        autoObserveRef.current = false;
+        setHintLevel(0);
+        setAutoObserve(false);
+      }
+      await syncBoard({ kind: "explicit" });
+      setTestStatusOpen(false);
+      setTasksOpen(true);
+      setToast(`${ready.mode === "test" ? "Test" : "Preparation"} ready — five questions from Nyx.`);
+    })().finally(() => {
+      testOperationRef.current = false;
+    });
+  }, [boardReady, sendTurn, sessionId, syncBoard, topicTest]);
+
   const scheduleObservation = useCallback(() => {
+    if (nyxLocked) return;
     interactionCountRef.current += 1;
     if (!autoObserve || interactionCountRef.current < 2) return;
     if (observationTimerRef.current) clearTimeout(observationTimerRef.current);
@@ -1107,7 +1168,7 @@ export default function TutorBoard({
         );
       }
     }, 5_000);
-  }, [autoObserve, bridgeState, sendTurn]);
+  }, [autoObserve, bridgeState, nyxLocked, sendTurn]);
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 && event.button !== 1 && event.button !== 2) return;
@@ -1461,6 +1522,55 @@ export default function TutorBoard({
     );
   };
 
+  const submitTopicTestAnswers = (answers: string[]) => {
+    if (!topicTest || testOperationRef.current) return;
+    const analyzing: TopicTestSession = { ...topicTest, status: "analyzing", answers, error: undefined, errorStage: undefined };
+    topicTestRef.current = analyzing;
+    setTopicTest(analyzing);
+    setTasksOpen(false);
+    setTestStatusOpen(true);
+    testOperationRef.current = true;
+    void (async () => {
+      await syncBoard({ captureSnapshot: true, kind: "explicit" });
+      const answerText = answers.map((answer, index) => `${index + 1}. ${answer}`).join("\n");
+      const reply = await sendTurn(
+        `Analyze this completed ${analyzing.mode} for “${analyzing.subtopic}”. Review the complete board, every reasoning step, and these submitted answers:\n${answerText}\n\nGrade rigorously and make it clear why this grade was earned instead of the next higher grade. Do not draw on the board. Return only valid JSON with this exact shape: {"grade":"A-F with optional +/-","score":0,"gradeReason":"why this grade and not the next one","summary":"short overall analysis","strengths":["specific strength"],"improvements":["specific improvement"],"breakdown":[{"task":1,"outcome":"correct, partial, or incorrect","explanation":"what happened and where"}]}. Include all five tasks in breakdown.`,
+        "topic_test_analysis",
+      );
+      const analysis = parseTopicTestAnalysis(reply || "");
+      if (!analysis) {
+        const failed: TopicTestSession = { ...analyzing, status: "error", errorStage: "analysis", error: "Nyx finished, but the grade report could not be read. Your answers and board are saved." };
+        topicTestRef.current = failed;
+        setTopicTest(failed);
+        await syncBoard({ captureSnapshot: true, kind: "explicit" });
+        return;
+      }
+      const complete: TopicTestSession = { ...analyzing, status: "complete", analysis };
+      topicTestRef.current = complete;
+      setTopicTest(complete);
+      await syncBoard({ captureSnapshot: true, kind: "explicit" });
+      setTestStatusOpen(true);
+      setToast(`Analysis complete — ${analysis.grade} (${analysis.score}/100).`);
+    })().finally(() => {
+      testOperationRef.current = false;
+    });
+  };
+
+  const retryTopicTest = () => {
+    if (!topicTest || topicTest.status !== "error") return;
+    if (topicTest.errorStage === "analysis" && topicTest.answers?.length) {
+      testOperationRef.current = false;
+      submitTopicTestAnswers(topicTest.answers);
+      return;
+    }
+    const generating: TopicTestSession = { ...topicTest, status: "generating", error: undefined, errorStage: undefined };
+    topicTestRef.current = generating;
+    setTopicTest(generating);
+    setTestStatusOpen(true);
+    testOperationRef.current = false;
+    void syncBoard({ kind: "explicit" });
+  };
+
   const createNewBoard = () => {
     router.push("/boards/current");
   };
@@ -1576,7 +1686,7 @@ export default function TutorBoard({
             onExportPdf={exportToPdf}
           />
 
-          {taskDescription && (
+          {taskDescription && topicTest?.status !== "complete" && (
             <Button
               className="h-8 w-auto min-w-0 gap-2 rounded-lg border-border/80 bg-background/70 px-3 text-[11px] font-semibold shadow-none"
               variant="outline"
@@ -1585,8 +1695,14 @@ export default function TutorBoard({
               onClick={() => setTasksOpen(true)}
             >
               <ClipboardList size={15} />
-              <span className="hidden sm:inline">Tasks</span>
+              <span className="hidden sm:inline">{topicTest ? (topicTest.mode === "test" ? "Test" : "Preparation") : "Tasks"}</span>
               <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{taskPrompts(taskDescription).length}</span>
+            </Button>
+          )}
+
+          {topicTest?.status === "complete" && (
+            <Button className="h-8 w-auto gap-2 rounded-lg px-3 text-[11px]" variant="ghost" size="sm" type="button" onClick={() => setTestStatusOpen(true)}>
+              <BarChart3 size={15} /><span className="hidden sm:inline">Result {topicTest.analysis?.grade}</span>
             </Button>
           )}
         </div>
@@ -1594,10 +1710,10 @@ export default function TutorBoard({
         <PracticeClocks onTimerComplete={() => setToast("Timer complete — pause and check your approach.")} />
 
         <div className="top-actions">
-          <label className="observe-toggle">
-            <input type="checkbox" checked={autoObserve} onChange={(event) => setAutoObserve(event.target.checked)} />
-            <span /> Auto-observe
-          </label>
+          {nyxLocked ? <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground"><ShieldCheck size={14} />Nyx off</span> : <label className="observe-toggle">
+              <input type="checkbox" checked={autoObserve} onChange={(event) => setAutoObserve(event.target.checked)} />
+              <span /> Auto-observe
+            </label>}
           <button className={`agent-status status-${bridgeState}`} title="Remote MCP assistant" type="button" onClick={() => setConnectionOpen(true)}>
             {bridgeState === "offline" ? <WifiOff size={14} /> : <Wifi size={14} />}
             <span>{statusLabel}</span><i />
@@ -1667,7 +1783,7 @@ export default function TutorBoard({
             <button type="button" aria-label="Zoom in" onClick={() => setView((previous) => ({ ...previous, zoom: clamp(previous.zoom * 1.18, 0.2, 4) }))}><ZoomIn size={16} /></button>
           </div>
 
-          <div className="hint-control">
+          {!nyxLocked && <div className="hint-control">
             <span>Help</span>
             <div>
               {HINT_LEVELS.map(({ level, label, instruction }) => (
@@ -1683,9 +1799,16 @@ export default function TutorBoard({
                 </button>
               ))}
             </div>
-          </div>
+          </div>}
 
-          <div className="tutor-composer">
+          {nyxLocked ? <div className="tutor-composer">
+            <div className="composer-status"><ShieldCheck size={13} /><span>Test mode — Nyx returns after submission.</span></div>
+            <div className="composer-row">
+              <ShieldCheck className="ml-2 size-5 text-muted-foreground" />
+              <span className="min-w-0 flex-1 px-2 text-xs text-muted-foreground">Help, voice, and checking are disabled for this attempt.</span>
+              <button type="button" className="check-button" onClick={() => setTasksOpen(true)}><ClipboardList size={15} />Open test</button>
+            </div>
+          </div> : <div className="tutor-composer">
             <div className="composer-status" aria-live="polite"><Sparkles size={13} /><span>{toast}</span></div>
             <div className="composer-row">
               <button type="button" className={`voice-button ${isListening ? "is-listening" : ""}`} onClick={startVoice} aria-label={isListening ? "Stop listening" : "Talk to Nyx"}>{isListening ? <CircleStop size={19} /> : <Mic size={19} />}</button>
@@ -1693,7 +1816,7 @@ export default function TutorBoard({
               {(bridgeState === "thinking" || bridgeState === "drawing") && <button type="button" className="stop-button" onClick={interrupt}><CircleStop size={15} /> Stop</button>}
               <button type="button" className="check-button" onClick={() => sendTurn("Check my work. Mark only the first invalid step, or briefly confirm if it is correct.", "explicit_verification")}><Check size={16} /> Check work</button>
             </div>
-          </div>
+          </div>}
         </div>
       </section>
 
@@ -1732,8 +1855,12 @@ export default function TutorBoard({
         task={taskDescription}
         open={tasksOpen}
         onOpenChange={setTasksOpen}
-        onSubmit={submitTaskAnswers}
+        onSubmit={topicTest ? submitTopicTestAnswers : submitTaskAnswers}
+        title={topicTest ? (topicTest.mode === "test" ? "Topic test" : "Preparation") : "Tasks"}
+        submitLabel={topicTest ? "Submit test" : "Submit answers"}
+        footerNote={topicTest ? "Nyx will analyze your answers and the complete board." : "Your answers will be sent to Nyx for checking."}
       />
+      <TopicTestStatus session={topicTest} open={testStatusOpen} onOpenChange={setTestStatusOpen} onRetry={retryTopicTest} />
     </main>
   );
 }

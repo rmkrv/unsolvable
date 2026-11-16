@@ -6,6 +6,7 @@ import type { BoardDocument } from "@/lib/domain/board/model";
 import { createEmptyBoardDocument } from "@/lib/domain/board/model";
 import type { Viewer } from "@/lib/server/auth/viewer";
 import { requireStudent } from "@/lib/server/auth/policies";
+import { createTopicTestSession, type NewTopicTest } from "@/lib/domain/topic-test";
 
 let repository: BoardRepository | null = null;
 
@@ -43,10 +44,16 @@ export function deleteEmptyTutorBoard(viewer: Viewer, boardId: string) {
   return getBoardRepository().deleteEmptyForUser(viewer.appUserId, boardId);
 }
 
-export async function createTutorBoard(viewer: Viewer, title = "Untitled board") {
+export function deleteTutorBoard(viewer: Viewer, boardId: string) {
+  requireStudent(viewer);
+  return getBoardRepository().deleteForUser(viewer.appUserId, boardId);
+}
+
+export async function createTutorBoard(viewer: Viewer, title = "Untitled board", topicTest?: NewTopicTest) {
   requireStudent(viewer);
   const boardId = crypto.randomUUID();
   const document = createEmptyBoardDocument(boardId);
+  if (topicTest) document.topicTest = createTopicTestSession(topicTest);
   const result = await saveTutorBoard(viewer, {
     boardId,
     stateJson: JSON.stringify(document),

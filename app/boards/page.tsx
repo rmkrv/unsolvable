@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { ArrowRight, Clock3, LayoutGrid } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { BoardListCard } from "@/components/board/board-list-card";
 import { NewBoardButton } from "@/components/new-board-button";
 import { requireRolePage } from "@/lib/server/auth/viewer-service";
 import { loadUserBoards } from "@/lib/server/home/dashboard-data";
@@ -18,9 +18,14 @@ export default async function BoardsPage() {
           <NewBoardButton />
         </div>
         {boards.length ? <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {boards.map((board) => <Link key={board.boardId} href={`/boards/${encodeURIComponent(board.boardId)}`} className="card card-border bg-base-100 transition hover:-translate-y-0.5 hover:shadow-lg">
-            <div className="card-body"><div className="flex items-center justify-between"><LayoutGrid size={20} className="text-primary" /><span className="badge badge-outline badge-sm">v{board.eventVersion}</span></div><h3 className="card-title mt-3">{board.title}</h3><p className="text-sm text-base-content/50">{board.subject || "Mathematics"}</p><div className="mt-5 flex items-center justify-between text-xs text-base-content/45"><span className="flex items-center gap-1.5"><Clock3 size={14} />{new Date(board.lastOpenedAt).toLocaleDateString()}</span><ArrowRight size={16} /></div></div>
-          </Link>)}
+          {boards.map((board) => <BoardListCard
+            key={board.boardId}
+            boardId={board.boardId}
+            title={board.title}
+            subject={board.subject}
+            eventVersion={board.eventVersion}
+            lastOpenedLabel={new Date(board.lastOpenedAt).toLocaleDateString()}
+          />)}
         </div> : <div className="mt-8 rounded-xl border border-dashed border-border p-10 text-center"><LayoutGrid className="mx-auto text-muted-foreground" /><h3 className="mt-4 text-lg font-semibold">No boards yet</h3><p className="mt-2 text-sm text-muted-foreground">Create a board to begin a problem and keep its full working history.</p><div className="mt-5 flex justify-center"><NewBoardButton /></div></div>}
       </main>
     </AppShell>

@@ -88,6 +88,9 @@ test("PostgreSQL board repository enforces ownership and preserves the board con
     assert.equal(await repository.readForUser(otherUserId), null);
     assert.equal(await repository.markOpened(otherUserId, boardId), false);
     assert.equal(await repository.enqueueTutorAction(otherUserId, boardId, { type: "say" }), null);
+    assert.equal(await repository.deleteForUser(otherUserId, boardId), false, "non-owners cannot delete a board");
+    assert.equal(await repository.deleteForUser(userId, boardId), true, "owners can delete a non-empty board");
+    assert.equal(await repository.readForUser(userId, boardId), null);
   } finally {
     await db.delete(schema.appUsers).where(eq(schema.appUsers.authSubject, authSubject));
     await db.delete(schema.appUsers).where(eq(schema.appUsers.authSubject, otherSubject));

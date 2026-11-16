@@ -20,7 +20,7 @@ export default async function RoleEntryPage({
 function isAllowedReturnPath(role: AccountRole, path: string) {
   if (role === "parent") return path === "/parent" || path.startsWith("/parent/") || path.startsWith("/parent#");
   if (role === "admin") return path === "/admin" || path.startsWith("/admin/") || path.startsWith("/admin#");
-  return ["/home", "/boards", "/weak-spots", "/friends", "/settings"].some(
+  return ["/home", "/boards", "/analysis", "/weak-spots", "/friends", "/settings"].some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}#`),
   );
 }

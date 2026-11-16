@@ -59,7 +59,7 @@ test("HTTP board gateway owns board route serialization", async () => {
     return Response.json({ deleted: true });
   });
   assert.equal(await deletionGateway.deleteIfEmpty("board-1", { keepalive: true }), true);
-  assert.equal(requests[0].input, "/api/student/boards/board-1");
+  assert.equal(requests[0].input, "/api/student/boards/board-1?ifEmpty=true");
   assert.equal(requests[0].init.method, "DELETE");
   assert.equal(requests[0].init.keepalive, true);
 });

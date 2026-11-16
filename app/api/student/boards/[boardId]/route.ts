@@ -1,9 +1,11 @@
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { isSameOrigin } from "@/lib/server/auth/request-identity";
 import { requireRequestViewer } from "@/lib/server/auth/viewer-service";
-import { deleteEmptyTutorBoard, readTutorBoard, saveTutorBoard } from "@/lib/server/boards/board-service";
+import { deleteEmptyTutorBoard, deleteTutorBoard, readTutorBoard, saveTutorBoard } from "@/lib/server/boards/board-service";
 import { ResourceNotFound, Conflict } from "@/lib/server/auth/authorization-errors";
+import { HOME_CACHE_TAG } from "@/lib/server/home/dashboard-data";
 import { errorResponse } from "@/lib/server/http/api-errors";
 import { routeError } from "@/lib/server/http/route-utils";
 import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
@@ -67,9 +69,14 @@ export async function DELETE(request: Request, context: { params: Promise<{ boar
   try {
     const viewer = await requireRequestViewer();
     const { boardId } = await context.params;
-    const deleted = await deleteEmptyTutorBoard(viewer, boardId.slice(0, 120));
+    const permanently = new URL(request.url).searchParams.get("permanent") === "true";
+    const deleted = permanently
+      ? await deleteTutorBoard(viewer, boardId.slice(0, 120))
+      : await deleteEmptyTutorBoard(viewer, boardId.slice(0, 120));
+    if (permanently && !deleted) throw new ResourceNotFound();
+    if (deleted) revalidateTag(HOME_CACHE_TAG, "max");
     return NextResponse.json({ deleted });
   } catch (error) {
-    return routeError(error, "Could not clean up the empty board.");
+    return routeError(error, "Could not delete the board.");
   }
 }

@@ -61,11 +61,17 @@ export function TaskWorkspace({
   open,
   onOpenChange,
   onSubmit,
+  title = "Tasks",
+  submitLabel = "Submit answers",
+  footerNote = "Your answers will be sent to Nyx for checking.",
 }: {
   task?: TaskDescription;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (answers: string[]) => void | Promise<void>;
+  title?: string;
+  submitLabel?: string;
+  footerNote?: string;
 }) {
   const prompts = useMemo(() => task ? taskPrompts(task) : [], [task]);
   const [answers, setAnswers] = useState<string[]>(() => prompts.map(() => ""));
@@ -91,7 +97,7 @@ export function TaskWorkspace({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(760px,calc(100dvh-2rem))] max-w-3xl gap-0 overflow-hidden border-border/80 bg-[#fffefa] p-0 shadow-2xl sm:rounded-2xl">
+      <DialogContent className="max-h-[min(760px,calc(100dvh-2rem))] max-w-3xl grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden border-border/80 bg-[#fffefa] p-0 shadow-2xl sm:rounded-2xl">
         <DialogHeader className="border-b border-border/70 px-6 py-5 pr-14 text-left sm:px-8">
           <div className="flex items-start gap-3">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
@@ -99,7 +105,7 @@ export function TaskWorkspace({
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                <DialogTitle className="text-xl tracking-[-0.025em]">Tasks</DialogTitle>
+                <DialogTitle className="text-xl tracking-[-0.025em]">{title}</DialogTitle>
                 <span className="text-xs font-medium text-muted-foreground">
                   {answeredCount} of {prompts.length} answered
                 </span>
@@ -118,8 +124,8 @@ export function TaskWorkspace({
           </div>
         </DialogHeader>
 
-        <form className="grid min-h-0 grid-rows-[1fr_auto]" onSubmit={submit}>
-          <div className="min-h-0 overflow-y-auto px-6 py-5 sm:px-8 sm:py-6">
+        <form className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto]" onSubmit={submit}>
+          <div className="scrollbar-hidden min-h-0 overflow-y-auto overscroll-contain px-6 py-5 sm:px-8 sm:py-6">
             <div className="grid gap-4">
               {prompts.map((prompt, index) => (
                 <section className="grid gap-3 rounded-xl border border-border/75 bg-background/70 p-4 sm:grid-cols-[2rem_minmax(0,1fr)]" key={`${index}-${prompt.slice(0, 32)}`}>
@@ -154,11 +160,11 @@ export function TaskWorkspace({
 
           <footer className="flex items-center justify-between gap-4 border-t border-border/70 bg-muted/25 px-6 py-4 sm:px-8">
             <p className="hidden text-xs text-muted-foreground sm:block">
-              Your answers will be sent to Nyx for checking.
+              {footerNote}
             </p>
             <Button className="ml-auto min-w-32 gap-2" type="submit" disabled={!allAnswered || submitting}>
               <Check size={16} />
-              {submitting ? "Submitting…" : "Submit answers"}
+              {submitting ? "Submitting…" : submitLabel}
             </Button>
           </footer>
         </form>
