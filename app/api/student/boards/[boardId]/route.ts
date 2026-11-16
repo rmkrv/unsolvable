@@ -8,7 +8,7 @@ import { ResourceNotFound, Conflict } from "@/lib/server/auth/authorization-erro
 import { HOME_CACHE_TAG } from "@/lib/server/home/dashboard-data";
 import { errorResponse } from "@/lib/server/http/api-errors";
 import { routeError } from "@/lib/server/http/route-utils";
-import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
+import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH, MAX_BOARD_UPDATE_PAYLOAD_LENGTH } from "@/lib/domain/board/limits";
 
 const updateBoardSchema = z.object({
   state: z.record(z.string(), z.unknown()),
@@ -44,7 +44,7 @@ export async function PUT(request: Request, context: { params: Promise<{ boardId
     const viewer = await requireRequestViewer();
     const { boardId } = await context.params;
     const raw = await request.text();
-    if (raw.length > 1_800_000) return errorResponse("payload_too_large", "Board state is too large.", 413);
+    if (raw.length > MAX_BOARD_UPDATE_PAYLOAD_LENGTH) return errorResponse("payload_too_large", "Board state is too large.", 413);
     const parsed = updateBoardSchema.safeParse(JSON.parse(raw || "{}"));
     if (!parsed.success) return errorResponse("invalid_input", "Invalid board state.", 400);
     const result = await saveTutorBoard(viewer, {

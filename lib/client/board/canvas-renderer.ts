@@ -15,6 +15,7 @@ export type CanvasRenderInput = {
   selectedIds: string[];
   selectionBox: SelectionBox | null;
   viewport: Viewport;
+  onAssetLoad?: () => void;
 };
 
 type StaticCanvasCache = {
@@ -29,6 +30,38 @@ type StaticCanvasCache = {
 };
 
 const staticCanvasCaches = new WeakMap<HTMLCanvasElement, StaticCanvasCache>();
+const boardImageCache = new Map<string, HTMLImageElement>();
+const boardImageListeners = new Map<string, Set<() => void>>();
+
+function boardImage(dataUrl: string, onLoad?: () => void) {
+  let image = boardImageCache.get(dataUrl);
+  if (!image) {
+    image = new Image();
+    boardImageCache.set(dataUrl, image);
+    image.addEventListener("load", () => {
+      for (const listener of boardImageListeners.get(dataUrl) ?? []) listener();
+      boardImageListeners.delete(dataUrl);
+    }, { once: true });
+    image.src = dataUrl;
+  }
+  if (!image.complete && onLoad) {
+    const listeners = boardImageListeners.get(dataUrl) ?? new Set<() => void>();
+    listeners.add(onLoad);
+    boardImageListeners.set(dataUrl, listeners);
+  }
+  return image.complete && image.naturalWidth > 0 ? image : null;
+}
+
+export async function preloadBoardImage(dataUrl: string) {
+  const cached = boardImageCache.get(dataUrl);
+  if (cached?.complete && cached.naturalWidth > 0) return;
+  const image = cached ?? new Image();
+  if (!cached) {
+    boardImageCache.set(dataUrl, image);
+    image.src = dataUrl;
+  }
+  await image.decode();
+}
 
 export function invalidateBoardCanvas(canvas: HTMLCanvasElement | null) {
   if (canvas) staticCanvasCaches.delete(canvas);
@@ -69,7 +102,40 @@ function drawGrid(context: CanvasRenderingContext2D, width: number, height: numb
   }
 }
 
-function drawStroke(context: CanvasRenderingContext2D, stroke: Stroke, viewport: Viewport) {
+function drawStroke(context: CanvasRenderingContext2D, stroke: Stroke, viewport: Viewport, onAssetLoad?: () => void) {
+  if (stroke.kind === "image" && stroke.image) {
+    const image = boardImage(stroke.image.dataUrl, onAssetLoad);
+    if (!image) return;
+    const bounds = strokeBounds(stroke);
+    context.save();
+    context.globalAlpha = stroke.opacity;
+    context.drawImage(
+      image,
+      bounds.x * viewport.zoom + viewport.x,
+      bounds.y * viewport.zoom + viewport.y,
+      bounds.width * viewport.zoom,
+      bounds.height * viewport.zoom,
+    );
+    context.restore();
+    return;
+  }
+  if (stroke.kind === "text" && stroke.text) {
+    const bounds = strokeBounds(stroke);
+    context.save();
+    context.globalAlpha = stroke.opacity;
+    context.fillStyle = stroke.color;
+    context.font = `500 ${stroke.text.fontSize * viewport.zoom}px ui-sans-serif, system-ui, sans-serif`;
+    context.textBaseline = "top";
+    stroke.text.lines.forEach((line, index) => {
+      context.fillText(
+        line,
+        bounds.x * viewport.zoom + viewport.x,
+        bounds.y * viewport.zoom + viewport.y + index * stroke.text!.lineHeight * viewport.zoom,
+      );
+    });
+    context.restore();
+    return;
+  }
   if (stroke.points.length < 2) return;
   context.save();
   context.globalAlpha = stroke.opacity;
@@ -94,7 +160,7 @@ function drawStroke(context: CanvasRenderingContext2D, stroke: Stroke, viewport:
 }
 
 export function renderBoardCanvas(input: CanvasRenderInput) {
-  const { canvas, stage, page, previewStrokes, selectedIds, selectionBox, viewport } = input;
+  const { canvas, stage, page, previewStrokes, selectedIds, selectionBox, viewport, onAssetLoad } = input;
   const rect = stage.getBoundingClientRect();
   const ratio = Math.max(1, window.devicePixelRatio || 1);
   const width = Math.max(1, Math.round(rect.width * ratio));
@@ -144,7 +210,7 @@ export function renderBoardCanvas(input: CanvasRenderInput) {
       bufferContext.clearRect(0, 0, rect.width, rect.height);
       drawGrid(bufferContext, rect.width, rect.height, viewport);
       for (const stroke of page?.strokes ?? []) {
-        if (isVisible(stroke, viewport, rect.width, rect.height)) drawStroke(bufferContext, stroke, viewport);
+        if (isVisible(stroke, viewport, rect.width, rect.height)) drawStroke(bufferContext, stroke, viewport, onAssetLoad);
       }
     }
     cache.page = page;
@@ -167,7 +233,7 @@ export function renderBoardCanvas(input: CanvasRenderInput) {
   }
   context.drawImage(cache.buffer, translatedX, translatedY);
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  for (const stroke of previewStrokes) drawStroke(context, stroke, viewport);
+  for (const stroke of previewStrokes) drawStroke(context, stroke, viewport, onAssetLoad);
 
   const selected = selectedStrokes(page, selectedIds);
   const selectedBounds = aggregateStrokeBounds(selected);

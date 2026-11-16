@@ -8,13 +8,24 @@ export type Stroke = {
   color: string;
   width: number;
   opacity: number;
-  kind: "pen" | "highlighter" | "feedback";
+  kind: "pen" | "highlighter" | "feedback" | "image" | "text";
   author: "student" | "ai";
   createdAt: number;
   modifiedAt?: number;
   modifiedBy?: "student" | "ai";
   semantic?: string;
   groupId?: string;
+  image?: {
+    dataUrl: string;
+    width: number;
+    height: number;
+  };
+  text?: {
+    value: string;
+    lines: string[];
+    fontSize: number;
+    lineHeight: number;
+  };
 };
 
 export type Page = { id: string; name: string; strokes: Stroke[] };
@@ -109,6 +120,10 @@ export function strokeBounds(stroke: Stroke) {
 }
 
 export function distanceToStroke(x: number, y: number, stroke: Stroke, maximumDistance = Number.POSITIVE_INFINITY) {
+  if (stroke.kind === "image" || stroke.kind === "text") {
+    const bounds = strokeBounds(stroke);
+    if (x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height) return 0;
+  }
   if (Number.isFinite(maximumDistance)) {
     const bounds = strokeBounds(stroke);
     if (

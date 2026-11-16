@@ -39,15 +39,36 @@ export function parseClipboardStrokes(raw: string) {
       && typeof stroke.color === "string"
       && Number.isFinite(stroke.width)
       && Number.isFinite(stroke.opacity)
-      && ["pen", "highlighter", "feedback"].includes(stroke.kind)
+      && ["pen", "highlighter", "feedback", "image", "text"].includes(stroke.kind)
       && Array.isArray(stroke.points)
       && stroke.points.every((point) =>
         Number.isFinite(point?.x) && Number.isFinite(point?.y) && Number.isFinite(point?.pressure) && Number.isFinite(point?.t),
-      ),
+      )
+      && (stroke.kind !== "image" || (
+        typeof stroke.image?.dataUrl === "string"
+        && stroke.image.dataUrl.startsWith("data:image/")
+        && Number.isFinite(stroke.image.width)
+        && Number.isFinite(stroke.image.height)
+      ))
+      && (stroke.kind !== "text" || (
+        typeof stroke.text?.value === "string"
+        && Array.isArray(stroke.text.lines)
+        && stroke.text.lines.every((line) => typeof line === "string")
+        && Number.isFinite(stroke.text.fontSize)
+        && Number.isFinite(stroke.text.lineHeight)
+      )),
     );
   } catch {
     return [];
   }
+}
+
+export function clipboardPlainText(strokes: Stroke[]) {
+  return strokes
+    .filter((stroke) => stroke.kind === "text" && typeof stroke.text?.value === "string")
+    .map((stroke) => stroke.text!.value.trim())
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function aggregateStrokeBounds(strokes: Stroke[]) {

@@ -46,6 +46,7 @@ import {
 import {
   aggregateStrokeBounds,
   clamp,
+  clipboardPlainText,
   copyPages,
   parseClipboardStrokes,
   selectedStrokes,
@@ -54,9 +55,15 @@ import {
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
 import { BoardSaveCoordinator, type BoardSaveKind } from "@/lib/client/board/board-save-coordinator";
-import { invalidateBoardCanvas, renderBoardCanvas, renderBoardPageForExport } from "@/lib/client/board/canvas-renderer";
+import { invalidateBoardCanvas, preloadBoardImage, renderBoardCanvas, renderBoardPageForExport } from "@/lib/client/board/canvas-renderer";
 import { extractTaskFile } from "@/lib/client/board/problem-file";
-import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH } from "@/lib/domain/board/limits";
+import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH, MAX_BOARD_UPDATE_PAYLOAD_LENGTH } from "@/lib/domain/board/limits";
+import {
+  createImageStroke,
+  createTextStroke,
+  ensureEmbeddedImageBudget,
+  prepareClipboardImage,
+} from "@/lib/client/board/clipboard-content";
 import {
   readActionCursor,
   readBoardColor,
@@ -377,6 +384,10 @@ export default function TutorBoard({
       selectedIds,
       selectionBox: selectionBoxRef.current,
       viewport: viewRef.current,
+      onAssetLoad: () => {
+        invalidateBoardCanvas(canvas);
+        setPages((previous) => [...previous]);
+      },
     });
   }, [selectedIds]);
 
@@ -523,10 +534,41 @@ export default function TutorBoard({
     setSelectedIds([]);
   }, [commitPages, selectedIds]);
 
+  const assertPagesFit = useCallback((candidatePages: Page[]) => {
+    const document = {
+      boardId: sessionId ?? boardId,
+      pages: candidatePages,
+      activePageId: activePageIdRef.current,
+      viewport: viewRef.current,
+      hintLevel: hintLevelRef.current,
+      autoObserve: autoObserveRef.current,
+      request: requestRef.current,
+      taskDescription: taskDescriptionRef.current,
+      topicTest: topicTestRef.current,
+    };
+    const requestLength = JSON.stringify({
+      state: document,
+      snapshotDataUrl: null,
+      expectedVersion: serverVersionRef.current,
+    }).length;
+    if (requestLength > MAX_BOARD_UPDATE_PAYLOAD_LENGTH - 2_000) {
+      throw new Error("This board is too large for more pasted content. Remove something or use a new page in another board.");
+    }
+  }, [boardId, sessionId]);
+
   const pasteStrokes = useCallback((source = clipboardRef.current) => {
     if (!source.length) return;
-    pasteCountRef.current += 1;
-    const offset = (18 * pasteCountRef.current) / viewRef.current.zoom;
+    try {
+      ensureEmbeddedImageBudget(
+        pagesRef.current,
+        source.reduce((total, stroke) => total + (stroke.kind === "image" ? stroke.image?.dataUrl.length ?? 0 : 0), 0),
+      );
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "That content could not be pasted.");
+      return;
+    }
+    const pasteCount = pasteCountRef.current + 1;
+    const offset = (18 * pasteCount) / viewRef.current.zoom;
     const groupIds = new Map<string, string>();
     const pasted = source.map((stroke) => {
       const groupId = stroke.groupId
@@ -547,12 +589,56 @@ export default function TutorBoard({
         points: stroke.points.map((point) => ({ ...point, x: point.x + offset, y: point.y + offset })),
       };
     });
-    commitPages((previous) => previous.map((page) =>
+    const nextPages = pagesRef.current.map((page) =>
       page.id === activePageIdRef.current ? { ...page, strokes: [...page.strokes, ...pasted] } : page,
-    ));
+    );
+    try {
+      assertPagesFit(nextPages);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "That content could not be pasted.");
+      return;
+    }
+    pasteCountRef.current = pasteCount;
+    commitPages(() => nextPages);
     setSelectedIds(pasted.map((stroke) => stroke.id));
     setTool("select");
-  }, [commitPages]);
+  }, [assertPagesFit, commitPages]);
+
+  const pasteExternalClipboard = useCallback(async (imageFile: File | null, text: string) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    const viewport = viewRef.current;
+    const center = {
+      x: (rect.width / 2 - viewport.x) / viewport.zoom,
+      y: (rect.height / 2 - viewport.y) / viewport.zoom,
+    };
+    try {
+      let stroke: Stroke;
+      if (imageFile) {
+        const image = await prepareClipboardImage(imageFile);
+        ensureEmbeddedImageBudget(pagesRef.current, image.dataUrl.length);
+        await preloadBoardImage(image.dataUrl);
+        stroke = createImageStroke(image, center, {
+          width: Math.max(240, rect.width * 0.72 / viewport.zoom),
+          height: Math.max(180, rect.height * 0.72 / viewport.zoom),
+        });
+      } else {
+        stroke = createTextStroke(text, center, Math.min(560, rect.width * 0.72 / viewport.zoom), color);
+      }
+      const nextPages = pagesRef.current.map((page) =>
+        page.id === activePageIdRef.current ? { ...page, strokes: [...page.strokes, stroke] } : page,
+      );
+      assertPagesFit(nextPages);
+      commitPages(() => nextPages);
+      pasteCountRef.current = 0;
+      setSelectedIds([stroke.id]);
+      setTool("select");
+      setToast(imageFile ? "Pasted image onto the board." : "Pasted text onto the board.");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "That clipboard content could not be pasted.");
+    }
+  }, [assertPagesFit, color, commitPages]);
 
   const duplicateSelection = useCallback(() => {
     const copied = copySelection();
@@ -692,6 +778,8 @@ export default function TutorBoard({
       if (!strokes.length) return;
       event.preventDefault();
       event.clipboardData?.setData(STROKE_CLIPBOARD_TYPE, JSON.stringify({ version: 1, strokes }));
+      const plainText = clipboardPlainText(strokes);
+      if (plainText) event.clipboardData?.setData("text/plain", plainText);
     };
     const onCut = (event: ClipboardEvent) => {
       if (isEditableTarget(event.target)) return;
@@ -699,20 +787,35 @@ export default function TutorBoard({
       if (!strokes.length) return;
       event.preventDefault();
       event.clipboardData?.setData(STROKE_CLIPBOARD_TYPE, JSON.stringify({ version: 1, strokes }));
+      const plainText = clipboardPlainText(strokes);
+      if (plainText) event.clipboardData?.setData("text/plain", plainText);
       deleteSelection();
     };
     const onPaste = (event: ClipboardEvent) => {
       if (isEditableTarget(event.target)) return;
       const raw = event.clipboardData?.getData(STROKE_CLIPBOARD_TYPE) ?? "";
-      const hasExternalPayload = Boolean(event.clipboardData?.types.length);
-      const strokes = raw ? parseClipboardStrokes(raw) : hasExternalPayload ? [] : clipboardRef.current;
-      if (!strokes.length) return;
-      event.preventDefault();
       if (raw) {
+        const strokes = parseClipboardStrokes(raw);
+        if (!strokes.length) return;
+        event.preventDefault();
         clipboardRef.current = strokes;
         pasteCountRef.current = 0;
+        pasteStrokes(strokes);
+        return;
       }
-      pasteStrokes(strokes);
+      const imageFile = Array.from(event.clipboardData?.items ?? [])
+        .find((item) => item.kind === "file" && item.type.startsWith("image/"))
+        ?.getAsFile() ?? null;
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (imageFile || text.trim()) {
+        event.preventDefault();
+        void pasteExternalClipboard(imageFile, text);
+        return;
+      }
+      if (!event.clipboardData?.types.length && clipboardRef.current.length) {
+        event.preventDefault();
+        pasteStrokes();
+      }
     };
     const onBlur = () => {
       shiftPressedRef.current = false;
@@ -741,7 +844,7 @@ export default function TutorBoard({
       window.removeEventListener("paste", onPaste);
       window.removeEventListener("blur", onBlur);
     };
-  }, [connectionOpen, copySelection, deleteSelection, duplicateSelection, pasteStrokes, rebuildDrawingPreview, redo, requestRender, selectedIds, undo, zoomAtCenter]);
+  }, [connectionOpen, copySelection, deleteSelection, duplicateSelection, pasteExternalClipboard, pasteStrokes, rebuildDrawingPreview, redo, requestRender, selectedIds, undo, zoomAtCenter]);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -910,12 +1013,7 @@ export default function TutorBoard({
       if (!sessionId || !hydrationCompleteRef.current) return null;
       const canvas = canvasRef.current;
       const rect = canvas?.getBoundingClientRect();
-      const capturedSnapshot = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
-      const snapshotDataUrl = capturedSnapshot && capturedSnapshot.length <= MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH
-        ? capturedSnapshot
-        : undefined;
-      const result = await saveCoordinatorRef.current!.enqueue({
-        document: {
+      const document = {
           boardId: sessionId,
           pages: pagesRef.current,
           activePageId: activePageIdRef.current,
@@ -934,7 +1032,22 @@ export default function TutorBoard({
           request: requestRef.current,
           taskDescription: taskDescriptionRef.current,
           topicTest: topicTestRef.current,
-        },
+        };
+      const capturedSnapshot = captureSnapshot ? canvas?.toDataURL("image/png") : undefined;
+      const requestWithoutSnapshotLength = JSON.stringify({
+        state: document,
+        snapshotDataUrl: null,
+        expectedVersion: serverVersionRef.current,
+        title,
+      }).length;
+      const availableSnapshotLength = MAX_BOARD_UPDATE_PAYLOAD_LENGTH - requestWithoutSnapshotLength - 2_000;
+      const snapshotDataUrl = capturedSnapshot
+        && capturedSnapshot.length <= MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH
+        && capturedSnapshot.length <= availableSnapshotLength
+        ? capturedSnapshot
+        : undefined;
+      const result = await saveCoordinatorRef.current!.enqueue({
+        document,
         snapshotDataUrl,
         title,
       }, kind);
@@ -1596,6 +1709,9 @@ export default function TutorBoard({
   const exportToPdf = async () => {
     try {
       await syncBoard({ captureSnapshot: true, kind: "explicit" });
+      await Promise.all(pagesRef.current.flatMap((page) => page.strokes
+        .filter((stroke) => stroke.kind === "image" && stroke.image)
+        .map((stroke) => preloadBoardImage(stroke.image!.dataUrl))));
       const preview = pagesRef.current.map((page) => ({ name: page.name, dataUrl: renderBoardPageForExport(page) }));
       setPrintPages(preview);
       const originalTitle = document.title;
@@ -1615,6 +1731,9 @@ export default function TutorBoard({
       await syncBoard({ captureSnapshot: true, kind: "explicit" });
       const page = pagesRef.current.find((candidate) => candidate.id === activePageIdRef.current) ?? pagesRef.current[0];
       if (!page) throw new Error("There is no board page to export.");
+      await Promise.all(page.strokes
+        .filter((stroke) => stroke.kind === "image" && stroke.image)
+        .map((stroke) => preloadBoardImage(stroke.image!.dataUrl)));
       const link = document.createElement("a");
       const fileName = `${boardTitle}-${page.name}`
         .trim()
