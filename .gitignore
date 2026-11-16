@@ -52,6 +52,7 @@ yarn-error.log*
 
 # Local product planning
 /LOCAL_GOALS.md
+/design-qa.md
 /docs/LOCAL_*.md
 
 # OS metadata
