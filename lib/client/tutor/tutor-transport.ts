@@ -45,7 +45,7 @@ export function createTutorTransport(baseUrl: string | undefined, fetcher: typeo
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
-        signal,
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(100_000)]) : AbortSignal.timeout(100_000),
       });
       return responseJson<TutorTurnResult>(response, "Codex could not complete this turn.");
     },

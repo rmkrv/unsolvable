@@ -7,8 +7,8 @@ import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 import { HINT_POLICY_PROMPT } from "../bridge/hint-policy.mjs";
 
 const ALLOWED_ORIGINS = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
-const MAX_BODY_BYTES = 4096;
-const TURN_TIMEOUT_MS = 5 * 60_000;
+const MAX_BODY_BYTES = 32_768;
+const TURN_TIMEOUT_MS = 90_000;
 
 const NYX_INSTRUCTIONS = [
   "You are Nyx, an engineering whiteboard tutor. Use the vector MCP tools to inspect and update the student's board.",
@@ -69,8 +69,13 @@ function runCodex(binary, args, env, onEvent) {
     const finish = (result) => {
       if (settled) return;
       settled = true;
+      clearTimeout(deadline);
       resolve({ ...result, child });
     };
+    const deadline = setTimeout(() => {
+      child.kill();
+      finish({ code: -1, stderr: "Nyx timed out. Your work is saved; retry the analysis." });
+    }, TURN_TIMEOUT_MS);
     child.stdout.on("data", (chunk) => {
       output += chunk.toString();
       for (let end = output.indexOf("\n"); end !== -1; end = output.indexOf("\n")) {
@@ -109,7 +114,7 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       sandbox: "read-only",
       developerInstructions: NYX_INSTRUCTIONS,
       ephemeral: true,
-    }, 60_000);
+    }, 15_000);
     const threadId = result?.thread?.id;
     if (!threadId) throw new Error("Codex app-server did not create a thread.");
     sessions.set(boardId, { mode: "app-server", threadId });
@@ -149,14 +154,16 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
       }
       if (params.turn?.id === turnId) finishTurn(params.turn);
     });
-    const timeout = setTimeout(() => failTurn(new Error("Nyx timed out while completing the turn.")), TURN_TIMEOUT_MS);
+    const timeout = setTimeout(() => failTurn(new Error("Nyx timed out while completing the turn. Your work is saved; retry the analysis.")), TURN_TIMEOUT_MS);
+    // Attach a handler immediately, including while turn/start is pending.
+    void completed.catch(() => undefined);
     try {
       const result = await appServer.request("turn/start", {
         threadId,
         input: [{ type: "text", text: createTurnPrompt(boardId, trigger, message) }],
         model: nyxModel,
         effort: nyxReasoningEffort,
-      }, 60_000);
+      }, 15_000);
       turnId = result?.turn?.id;
       if (!turnId) throw new Error("Codex app-server did not start a turn.");
       active.turnId = turnId;
@@ -171,6 +178,12 @@ export async function startLocalCodexBridge({ siteUrl = "http://127.0.0.1:5173" 
         throw new Error(turn?.error?.message || `Codex turn ended with status ${turn?.status || "unknown"}.`);
       }
       return { reply, threadId };
+    } catch (error) {
+      if (turnId) {
+        await appServer.request("turn/interrupt", { threadId, turnId }, 5_000).catch(() => undefined);
+      }
+      sessions.delete(boardId);
+      throw error;
     } finally {
       clearTimeout(timeout);
       stopListening();

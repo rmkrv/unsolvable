@@ -1080,8 +1080,12 @@ export default function TutorBoard({
           setAutoObserve(payload.board.state.autoObserve === true);
           taskDescriptionRef.current = payload.board.state.taskDescription;
           setTaskDescription(payload.board.state.taskDescription);
-          topicTestRef.current = payload.board.state.topicTest;
-          setTopicTest(payload.board.state.topicTest);
+          const restoredTest = payload.board.state.topicTest;
+          const recoveredTest: TopicTestSession | undefined = restore && restoredTest?.status === "analyzing" && !testOperationRef.current
+            ? { ...restoredTest, status: "error", errorStage: "analysis", error: "The previous analysis was interrupted. Your saved answers are ready to retry." }
+            : restoredTest;
+          topicTestRef.current = recoveredTest;
+          setTopicTest(recoveredTest);
           if (["generating", "analyzing", "error"].includes(payload.board.state.topicTest?.status || "")) setTestStatusOpen(true);
         }
         if (shouldApplyRemote && payload.board?.title) {
@@ -1219,6 +1223,7 @@ export default function TutorBoard({
       } catch (error) {
         setBridgeState("offline");
         setToast(error instanceof Error ? error.message : "Could not share the request with the AI assistant.");
+        if (trigger === "topic_test_analysis") throw error;
         return undefined;
       }
     },
@@ -1664,7 +1669,13 @@ export default function TutorBoard({
       await syncBoard({ captureSnapshot: true, kind: "explicit" });
       setTestStatusOpen(true);
       setToast(`Analysis complete — ${analysis.grade} (${analysis.score}/100).`);
-    })().finally(() => {
+    })().catch(async (error: unknown) => {
+      const failed: TopicTestSession = { ...analyzing, status: "error", errorStage: "analysis", error: error instanceof Error ? error.message : "Analysis was interrupted. Your answers are ready to retry." };
+      topicTestRef.current = failed;
+      setTopicTest(failed);
+      setTestStatusOpen(true);
+      await syncBoard({ kind: "explicit" }).catch(() => undefined);
+    }).finally(() => {
       testOperationRef.current = false;
     });
   };

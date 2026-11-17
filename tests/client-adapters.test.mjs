@@ -15,6 +15,21 @@ async function importTypeScript(relativePath) {
   return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}`);
 }
 
+test("tutor transport bounds requests and preserves caller cancellation", async () => {
+  const { createTutorTransport } = await importTypeScript("lib/client/tutor/tutor-transport.ts");
+  const controller = new AbortController();
+  let requestSignal;
+  const transport = createTutorTransport("http://localhost:1234", async (_url, options) => {
+    requestSignal = options.signal;
+    return Response.json({ reply: '{"grade":"A"}' });
+  });
+  assert.deepEqual(await transport.sendTurn({ boardId: "one", message: "grade", trigger: "topic_test_analysis" }, controller.signal), { reply: '{"grade":"A"}' });
+  assert.ok(requestSignal instanceof AbortSignal);
+  assert.notEqual(requestSignal, controller.signal);
+  controller.abort();
+  assert.equal(requestSignal.aborted, true);
+});
+
 test("HTTP board gateway owns board route serialization", async () => {
   const { createHttpBoardGateway } = await importTypeScript("lib/client/board/board-gateway.ts");
   const requests = [];
