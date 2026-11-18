@@ -13,8 +13,7 @@ export default async function SignUpPage({
       <section className="signin-card">
         <div className="brand-mark" aria-hidden="true" />
         <p>Unsolvable</p>
-        <h1>Create your workspace.</h1>
-        <span>After sign-up, choose a student or parent account. Admin access is never available during public registration.</span>
+        <h1>Create new account</h1>
         <AuthForm mode="sign-up" redirectTo={redirectTo} oauthVisit={Boolean(clientId)} oauthPrompt={prompt} />
       </section>
     </main>

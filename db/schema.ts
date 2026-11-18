@@ -409,10 +409,18 @@ export const practiceSessions = pgTable(
       .references(() => appUsers.id, { onDelete: "cascade" }),
     boardId: uuid("board_id").references(() => boards.id, { onDelete: "set null" }),
     mode: text("mode").notNull().default("practice"),
+    topicSlug: text("topic_slug"),
+    topicName: text("topic_name"),
+    subtopic: text("subtopic"),
+    answers: jsonb("answers"),
+    analysis: jsonb("analysis"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
   },
-  (table) => [index("practice_sessions_user_started_idx").on(table.userId, table.startedAt)],
+  (table) => [
+    index("practice_sessions_user_started_idx").on(table.userId, table.startedAt),
+    index("practice_sessions_user_completed_idx").on(table.userId, table.completedAt),
+  ],
 );
 
 export const practiceAttempts = pgTable(

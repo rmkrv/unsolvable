@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { BarChart3, CheckCircle2, LoaderCircle, ShieldCheck, TrendingUp } from "lucide-react";
+import { BarChart3, LoaderCircle, ShieldCheck } from "lucide-react";
+import { TopicTestAnalysisDetails } from "@/components/analysis/topic-test-analysis-details";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { TopicTestSession } from "@/lib/domain/topic-test";
@@ -29,9 +30,7 @@ export function TopicTestStatus({ session, open, onOpenChange, onRetry }: { sess
               <div className="flex items-start gap-4"><span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-primary/10 text-3xl font-semibold text-primary">{analysis.grade}</span><div><DialogTitle className="text-xl">{analysis.score}/100</DialogTitle><DialogDescription className="mt-1">{analysis.gradeReason}</DialogDescription></div></div>
             </DialogHeader>
             <div className="scrollbar-hidden min-h-0 space-y-5 overflow-y-auto overscroll-contain p-6">
-              <p className="text-sm leading-6 text-muted-foreground">{analysis.summary}</p>
-              <div className="grid gap-4 sm:grid-cols-2"><ResultList icon={CheckCircle2} title="Strong" items={analysis.strengths} /><ResultList icon={TrendingUp} title="Improve" items={analysis.improvements} /></div>
-              {analysis.breakdown.length ? <div><h3 className="text-sm font-semibold">Task breakdown</h3><div className="mt-2 divide-y divide-border rounded-xl border border-border">{analysis.breakdown.map((item) => <div className="grid gap-1 px-4 py-3 sm:grid-cols-[6rem_1fr]" key={`${item.task}-${item.outcome}`}><div><p className="text-sm font-medium">Task {item.task}</p><p className="text-xs capitalize text-muted-foreground">{item.outcome}</p></div><p className="text-sm leading-5 text-muted-foreground">{item.explanation}</p></div>)}</div></div> : null}
+              <TopicTestAnalysisDetails analysis={analysis} />
             </div>
             <footer className="flex justify-end gap-2 border-t border-border bg-muted/25 px-6 py-4"><Button variant="outline" onClick={() => onOpenChange(false)}>Back to board</Button><Button asChild><Link href="/analysis"><BarChart3 />Open Analysis</Link></Button></footer>
           </>
@@ -41,8 +40,4 @@ export function TopicTestStatus({ session, open, onOpenChange, onRetry }: { sess
       </DialogContent>
     </Dialog>
   );
-}
-
-function ResultList({ icon: Icon, title, items }: { icon: typeof CheckCircle2; title: string; items: string[] }) {
-  return <div><div className="flex items-center gap-2 text-sm font-semibold"><Icon className="size-4 text-primary" />{title}</div><ul className="mt-2 space-y-1.5">{items.slice(0, 3).map((item) => <li className="text-xs leading-5 text-muted-foreground" key={item}>• {item}</li>)}</ul></div>;
 }

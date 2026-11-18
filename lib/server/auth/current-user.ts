@@ -11,7 +11,7 @@ export type AuthIdentity = {
 export async function getCurrentAuthIdentity(): Promise<AuthIdentity | null> {
   const { data: session } = await auth.getSession();
   const user = session?.user;
-  if (!user?.id || !user.email) return null;
+  if (!user?.id || !user.email || !user.emailVerified) return null;
 
   const fullName = user.name?.trim() || null;
   return {

@@ -55,6 +55,7 @@ import {
 import type { BoardAction } from "@/lib/domain/tutor/board-action";
 import { createHttpBoardGateway } from "@/lib/client/board/board-gateway";
 import { BoardSaveCoordinator, type BoardSaveKind } from "@/lib/client/board/board-save-coordinator";
+import { persistTopicTestResult } from "@/lib/client/analysis/analysis-gateway";
 import { invalidateBoardCanvas, preloadBoardImage, renderBoardCanvas, renderBoardPageForExport } from "@/lib/client/board/canvas-renderer";
 import { extractTaskFile } from "@/lib/client/board/problem-file";
 import { MAX_BOARD_SNAPSHOT_DATA_URL_LENGTH, MAX_BOARD_UPDATE_PAYLOAD_LENGTH } from "@/lib/domain/board/limits";
@@ -132,7 +133,6 @@ const localTutor = tutorTransport.mode === "local";
 function agentAvailable(state: BridgeState) {
   return state === "authorized";
 }
-
 const TOOL_ITEMS: { id: Tool; label: string; icon: typeof PenLine; shortcut?: string; ariaShortcut?: string }[] = [
   { id: "select", label: "Select", icon: MousePointer2, shortcut: "Ctrl/⌘ V", ariaShortcut: "Control+V Meta+V" },
   { id: "pen", label: "Pen", icon: PenLine, shortcut: "Ctrl/⌘ P", ariaShortcut: "Control+P Meta+P" },
@@ -1642,7 +1642,8 @@ export default function TutorBoard({
 
   const submitTopicTestAnswers = (answers: string[]) => {
     if (!topicTest || testOperationRef.current) return;
-    const analyzing: TopicTestSession = { ...topicTest, status: "analyzing", answers, error: undefined, errorStage: undefined };
+    const analyzing: TopicTestSession = { ...topicTest, analysisId: topicTest.analysisId || crypto.randomUUID(), status: "analyzing", answers, error: undefined, errorStage: undefined };
+    let completedResult: TopicTestSession | undefined;
     topicTestRef.current = analyzing;
     setTopicTest(analyzing);
     setTasksOpen(false);
@@ -1664,13 +1665,17 @@ export default function TutorBoard({
         return;
       }
       const complete: TopicTestSession = { ...analyzing, status: "complete", analysis };
+      completedResult = complete;
+      await persistTopicTestResult(complete);
       topicTestRef.current = complete;
       setTopicTest(complete);
       await syncBoard({ captureSnapshot: true, kind: "explicit" });
       setTestStatusOpen(true);
       setToast(`Analysis complete — ${analysis.grade} (${analysis.score}/100).`);
     })().catch(async (error: unknown) => {
-      const failed: TopicTestSession = { ...analyzing, status: "error", errorStage: "analysis", error: error instanceof Error ? error.message : "Analysis was interrupted. Your answers are ready to retry." };
+      const failed: TopicTestSession = completedResult
+        ? { ...completedResult, status: "error", errorStage: "persistence", error: error instanceof Error ? error.message : "The analysis finished but could not be saved. Try again to keep the result." }
+        : { ...analyzing, status: "error", errorStage: "analysis", error: error instanceof Error ? error.message : "Analysis was interrupted. Your answers are ready to retry." };
       topicTestRef.current = failed;
       setTopicTest(failed);
       setTestStatusOpen(true);
@@ -1681,7 +1686,24 @@ export default function TutorBoard({
   };
 
   const retryTopicTest = () => {
-    if (!topicTest || topicTest.status !== "error") return;
+    if (!topicTest || topicTest.status !== "error" || testOperationRef.current) return;
+    if (topicTest.errorStage === "persistence" && topicTest.analysis) {
+      const complete: TopicTestSession = { ...topicTest, status: "complete", error: undefined, errorStage: undefined };
+      testOperationRef.current = true;
+      void persistTopicTestResult(complete).then(async () => {
+        topicTestRef.current = complete;
+        setTopicTest(complete);
+        await syncBoard({ captureSnapshot: true, kind: "explicit" });
+        setToast(`Analysis saved — ${complete.analysis!.grade} (${complete.analysis!.score}/100).`);
+      }).catch((error: unknown) => {
+        const failed: TopicTestSession = { ...topicTest, error: error instanceof Error ? error.message : "The analysis could not be saved." };
+        topicTestRef.current = failed;
+        setTopicTest(failed);
+      }).finally(() => {
+        testOperationRef.current = false;
+      });
+      return;
+    }
     if (topicTest.errorStage === "analysis" && topicTest.answers?.length) {
       testOperationRef.current = false;
       submitTopicTestAnswers(topicTest.answers);

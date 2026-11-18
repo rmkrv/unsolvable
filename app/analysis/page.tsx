@@ -1,21 +1,21 @@
 import Link from "next/link";
-import { ArrowRight, BarChart3, CheckCircle2, ClipboardCheck, TrendingUp, TriangleAlert } from "lucide-react";
+import { ArrowRight, ClipboardCheck } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
+import { AnalysisBreakdown, AnalysisOverview } from "@/components/analysis/analysis-report";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { listUserBoards } from "@/lib/server/boards/board-service";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { listTopicTestAnalyses } from "@/lib/server/analyses/analysis-service";
 import { requireRolePage } from "@/lib/server/auth/viewer-service";
 
 export const dynamic = "force-dynamic";
 
 export default async function AnalysisPage() {
   const user = await requireRolePage("/analysis", "student");
-  const boards = await listUserBoards(user, 50);
-  const results = boards.filter((board) => board.topicTest?.status === "complete" && board.topicTest.analysis);
-  const latest = results[0]?.topicTest;
-  const strengths = unique(results.flatMap((board) => board.topicTest?.analysis?.strengths ?? [])).slice(0, 4);
-  const improvements = unique(results.flatMap((board) => board.topicTest?.analysis?.improvements ?? [])).slice(0, 4);
+  const results = await listTopicTestAnalyses(user, 50);
+  const latest = results[0];
+  const strengths = unique(results.flatMap((result) => result.analysis.strengths)).slice(0, 4);
+  const improvements = unique(results.flatMap((result) => result.analysis.improvements)).slice(0, 4);
 
   return (
     <AppShell user={user} active="weak-spots" title="Analysis">
@@ -29,49 +29,29 @@ export default async function AnalysisPage() {
           <Button asChild><Link href="/topics">Start a topic test<ArrowRight /></Link></Button>
         </header>
 
-        {latest?.analysis ? (
+        {latest ? (
           <>
-            <section className="mt-7 grid gap-4 lg:grid-cols-[0.9fr_1.4fr]">
-              <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card shadow-sm">
-                <CardHeader>
-                  <div className="flex items-center justify-between"><Badge variant="secondary">Latest result</Badge><span className="text-xs text-muted-foreground">{latest.subtopic}</span></div>
-                  <div className="mt-5 flex items-end gap-4"><span className="text-7xl font-semibold tracking-[-0.07em]">{latest.analysis.grade}</span><span className="pb-2 text-lg text-muted-foreground">{latest.analysis.score}/100</span></div>
-                  <CardTitle className="mt-4 text-xl">{latest.topicName}</CardTitle>
-                  <CardDescription>{latest.analysis.gradeReason}</CardDescription>
-                </CardHeader>
-              </Card>
-
-              <Card className="shadow-sm">
-                <CardHeader><div className="flex size-10 items-center justify-center rounded-lg bg-muted"><BarChart3 size={19} /></div><CardTitle className="mt-3">Overall analysis</CardTitle><CardDescription>{latest.analysis.summary}</CardDescription></CardHeader>
-                <CardContent className="grid gap-5 sm:grid-cols-2">
-                  <InsightList title="What you do well" icon={CheckCircle2} items={strengths} />
-                  <InsightList title="What to improve" icon={TrendingUp} items={improvements} />
-                </CardContent>
-              </Card>
-            </section>
-
-            {latest.analysis.breakdown.length ? (
-              <section className="mt-6" aria-labelledby="breakdown-title">
-                <Card className="shadow-sm">
-                  <CardHeader><CardTitle id="breakdown-title">Latest task breakdown</CardTitle><CardDescription>What happened on each task, and where the reasoning can improve.</CardDescription></CardHeader>
-                  <CardContent className="divide-y divide-border">
-                    {latest.analysis.breakdown.map((item) => <div className="grid gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[7rem_1fr]" key={`${item.task}-${item.outcome}`}><div><p className="font-medium">Task {item.task}</p><Badge className="mt-1 capitalize" variant="outline">{item.outcome}</Badge></div><p className="text-sm leading-6 text-muted-foreground">{item.explanation}</p></div>)}
-                  </CardContent>
-                </Card>
-              </section>
-            ) : null}
+            <AnalysisOverview result={latest} strengths={strengths} improvements={improvements} />
+            <AnalysisBreakdown result={latest} title="Latest task breakdown" />
 
             <section className="mt-8" aria-labelledby="results-title">
               <div className="mb-3 flex items-center justify-between"><h3 id="results-title" className="text-lg font-semibold">Results</h3><span className="text-xs text-muted-foreground">{results.length} completed</span></div>
               <div className="grid gap-3">
-                {results.map((board) => {
-                  const test = board.topicTest!;
-                  const analysis = test.analysis!;
-                  return <Card className="py-0 shadow-none" key={board.boardId}><CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-                    <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-muted text-xl font-semibold">{analysis.grade}</span>
-                    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{test.subtopic}</p><Badge variant="outline">{test.mode}</Badge></div><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{analysis.summary}</p></div>
-                    <div className="flex items-center gap-3 sm:pl-4"><span className="text-sm font-semibold">{analysis.score}/100</span><Button asChild variant="ghost" size="icon-sm"><Link href={`/boards/${encodeURIComponent(board.boardId)}`} aria-label={`Open ${test.subtopic} result`}><ArrowRight /></Link></Button></div>
-                  </CardContent></Card>;
+                {results.map((result) => {
+                  const analysis = result.analysis;
+                  return <Card className="group relative py-0 shadow-none transition-colors hover:border-primary/25" key={result.id}>
+                    <CardContent className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+                      <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-muted text-xl font-semibold">{analysis.grade}</span>
+                      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{result.subtopic}</p><Badge variant="outline">{result.mode}</Badge></div><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{analysis.summary}</p></div>
+                      <div className="flex items-center gap-3 sm:pl-4">
+                        <span className="text-sm font-semibold">{analysis.score}/100</span>
+                        <span className={buttonVariants({ variant: "ghost", size: "icon-sm", className: "pointer-events-none group-hover:bg-accent group-hover:text-accent-foreground" })} aria-hidden="true">
+                          <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
+                        </span>
+                      </div>
+                    </CardContent>
+                    <Link className="absolute inset-0 rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" href={`/analysis/${encodeURIComponent(result.id)}`} aria-label={`Open ${result.subtopic} analysis`} />
+                  </Card>;
                 })}
               </div>
             </section>
@@ -84,10 +64,6 @@ export default async function AnalysisPage() {
       </main>
     </AppShell>
   );
-}
-
-function InsightList({ title, icon: Icon, items }: { title: string; icon: typeof TriangleAlert; items: string[] }) {
-  return <div><div className="flex items-center gap-2 text-sm font-semibold"><Icon className="size-4 text-primary" />{title}</div><ul className="mt-3 space-y-2">{items.map((item) => <li className="text-sm leading-5 text-muted-foreground" key={item}>• {item}</li>)}</ul></div>;
 }
 
 function unique(values: string[]) {

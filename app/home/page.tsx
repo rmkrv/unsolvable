@@ -13,7 +13,7 @@ import {
 } from "@/components/home-dashboard-loading";
 import { requireRolePage } from "@/lib/server/auth/viewer-service";
 import type { Viewer } from "@/lib/server/auth/viewer";
-import { loadHomeOverview, loadRecentBoards } from "@/lib/server/home/dashboard-data";
+import { loadHomeOverview, loadLatestAnalysis, loadRecentBoards } from "@/lib/server/home/dashboard-data";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +44,12 @@ async function PersonalizedHeader({ user }: { user: Viewer }) {
 }
 
 async function PrimaryDashboard({ user }: { user: Viewer }) {
-  const [recentBoards, { insights }] = await Promise.all([
+  const [recentBoards, { insights }, latestAnalysis] = await Promise.all([
     loadRecentBoards(user),
     loadHomeOverview(user),
+    loadLatestAnalysis(user),
   ]);
-  return <PrimaryHomeSection recentBoards={recentBoards} insights={insights} />;
+  return <PrimaryHomeSection recentBoards={recentBoards} insights={insights} latestAnalysis={latestAnalysis} />;
 }
 
 async function RecentBoardsDashboard({ user }: { user: Viewer }) {

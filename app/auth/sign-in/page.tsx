@@ -14,7 +14,6 @@ export default async function SignInPage({
         <div className="brand-mark" aria-hidden="true" />
         <p>Unsolvable</p>
         <h1>Continue to your workspace.</h1>
-        <span>We will send you to the dashboard for your account role.</span>
         <AuthForm mode="sign-in" redirectTo={redirectTo} oauthVisit={Boolean(clientId)} oauthPrompt={prompt} />
       </section>
     </main>

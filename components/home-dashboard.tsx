@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import type { Viewer } from "@/lib/server/auth/viewer";
 import type { BoardSummary } from "@/lib/server/boards/board-repository";
+import type { SavedTopicTestAnalysis } from "@/lib/server/analyses/analysis-repository";
 import type { StudentHomeInsights as HomeInsights } from "@/lib/server/students/student-summary-repository";
 
 type HomeUser = Pick<Viewer, "displayName" | "email" | "fullName">;
@@ -42,17 +43,19 @@ export function HomeDashboard({
   user,
   recentBoards = previewBoards,
   insights = previewInsights,
+  latestAnalysis,
   isPreview = true,
 }: {
   user: HomeUser;
   recentBoards?: BoardSummary[];
   insights?: HomeInsights;
+  latestAnalysis?: SavedTopicTestAnalysis | null;
   isPreview?: boolean;
 }) {
   return (
     <HomePageFrame user={user}>
       <HomeDashboardHeader user={user} isPreview={isPreview} />
-      <PrimaryHomeSection recentBoards={recentBoards} insights={insights} />
+      <PrimaryHomeSection recentBoards={recentBoards} insights={insights} latestAnalysis={latestAnalysis} />
       <QuickStartSection isPreview={isPreview} />
       <RecentBoardsHomeCard recentBoards={recentBoards} />
     </HomePageFrame>
@@ -87,9 +90,8 @@ export function HomeDashboardHeader({ user, isPreview = false }: { user: HomeUse
   );
 }
 
-export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: BoardSummary[]; insights: HomeInsights }) {
+export function PrimaryHomeSection({ recentBoards, insights, latestAnalysis }: { recentBoards: BoardSummary[]; insights: HomeInsights; latestAnalysis?: SavedTopicTestAnalysis | null }) {
   const recent = recentBoards[0];
-  const latestAnalysis = recentBoards.find((board) => board.topicTest?.analysis)?.topicTest;
   const boardHref = "/boards/current";
 
   return (
@@ -119,10 +121,10 @@ export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: B
         <CardHeader>
           <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-foreground"><Target size={18} /></div>
           <CardTitle className="mt-3 text-lg">Next focus</CardTitle>
-          <CardDescription>{latestAnalysis?.analysis ? `Latest grade: ${latestAnalysis.analysis.grade}` : insights.weakSpot ? "Turn your practice evidence into a grade" : "Build enough evidence to find a focus"}</CardDescription>
+          <CardDescription>{latestAnalysis ? `Latest grade: ${latestAnalysis.analysis.grade}` : insights.weakSpot ? "Turn your practice evidence into a grade" : "Build enough evidence to find a focus"}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          {latestAnalysis?.analysis ? (
+          {latestAnalysis ? (
             <>
               <div className="flex items-start gap-4"><span className="grid size-12 shrink-0 place-items-center rounded-xl bg-muted text-xl font-semibold">{latestAnalysis.analysis.grade}</span><div><p className="font-semibold">{latestAnalysis.subtopic}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">{latestAnalysis.analysis.summary}</p></div></div>
               <p className="rounded-lg bg-muted p-3 text-xs leading-5 text-muted-foreground"><strong className="text-foreground">Next:</strong> {latestAnalysis.analysis.improvements[0]}</p>
@@ -133,7 +135,7 @@ export function PrimaryHomeSection({ recentBoards, insights }: { recentBoards: B
         </CardContent>
         <CardFooter>
           <Button asChild variant="outline" className="w-full">
-            <Link href={latestAnalysis?.analysis ? "/analysis" : "/topics"}>{latestAnalysis?.analysis ? "View analysis" : "Take a diagnostic"}<ArrowRight /></Link>
+            <Link href={latestAnalysis ? `/analysis/${encodeURIComponent(latestAnalysis.id)}` : "/topics"}>{latestAnalysis ? "View analysis" : "Take a diagnostic"}<ArrowRight /></Link>
           </Button>
         </CardFooter>
       </Card>
