@@ -1,3 +1,4 @@
+import { MathText } from "@/components/analysis/math-text";
 import type { OverallPerformanceReport, PerformanceAnalysisResult } from "@/lib/domain/analysis-performance";
 
 export function PerformancePrintReport({
@@ -13,7 +14,7 @@ export function PerformancePrintReport({
 
   return (
     <article className="performance-print-document">
-      <div className="flex items-start justify-between gap-8 rounded-box border border-primary/25 bg-gradient-to-r from-primary/10 via-primary/5 to-base-100 p-6">
+      <div className="flex items-start justify-between gap-8 rounded-box border border-primary/30 bg-primary/10 p-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Unsolvable learning report</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight">Performance analysis</h1>
@@ -25,11 +26,11 @@ export function PerformancePrintReport({
         </div>
       </div>
 
-      <section className="card card-border mt-6 border-primary/25 bg-primary/5 shadow-none">
+      <section className="card card-border mt-6 border-primary/30 bg-primary/10 shadow-none">
         <div className="card-body gap-2 p-5">
           <h2 className="card-title text-base text-primary">Overall summary</h2>
-          <p className="text-sm leading-6 text-base-content/70">{report.summary}</p>
-          <p className="text-xs text-base-content/50">{report.gradeReason}</p>
+          <p className="text-sm leading-6 text-base-content/80"><MathText>{report.summary}</MathText></p>
+          <p className="text-xs text-base-content/65"><MathText>{report.gradeReason}</MathText></p>
         </div>
       </section>
 
@@ -53,16 +54,17 @@ export function PerformancePrintReport({
         </div>
       </section>
 
-      <p className="mt-7 border-t border-base-300 pt-3 text-xs text-base-content/45">Updated through {formatDate(report.completedTo)}. The overall mark is the equally weighted average of the completed exams listed in this analysis.</p>
+      <p className="mt-7 border-t border-base-300 pt-3 text-xs text-base-content/60">Updated through {formatDate(report.completedTo)}.</p>
+      <footer className="performance-print-footer" aria-hidden="true">unsolvable</footer>
     </article>
   );
 }
 
 function InsightSection({ title, items, tone }: { title: string; items: string[]; tone: "success" | "warning" }) {
   const styles = tone === "success"
-    ? { card: "border-success/30 bg-success/5", title: "text-success", dot: "bg-success" }
-    : { card: "border-warning/35 bg-warning/5", title: "text-warning", dot: "bg-warning" };
-  return <section className={`card card-border shadow-none ${styles.card}`}><div className="card-body gap-3 p-5"><h2 className={`card-title text-base ${styles.title}`}><span className={`size-2 rounded-full ${styles.dot}`} />{title}</h2><ul className="space-y-2">{items.map((item) => <li className="grid grid-cols-[auto_1fr] gap-2 text-sm leading-5 text-base-content/70" key={item}><span className={`mt-2 size-1.5 rounded-full ${styles.dot}`} /><span>{item}</span></li>)}</ul></div></section>;
+    ? { card: "border-success/40 bg-success/10", title: "text-success", dot: "bg-success" }
+    : { card: "border-warning/45 bg-warning/10", title: "text-warning", dot: "bg-warning" };
+  return <section className={`card card-border shadow-none ${styles.card}`}><div className="card-body gap-3 p-5"><h2 className={`card-title text-base ${styles.title}`}><span className={`size-2 rounded-full ${styles.dot}`} />{title}</h2><ul className="space-y-2">{items.map((item) => <li className="grid grid-cols-[auto_1fr] gap-2 text-sm leading-5 text-base-content/80" key={item}><span className={`mt-2 size-1.5 rounded-full ${styles.dot}`} /><span><MathText>{item}</MathText></span></li>)}</ul></div></section>;
 }
 
 function scoreBadge(score: number) {

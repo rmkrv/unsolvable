@@ -378,7 +378,7 @@ button, input { font: inherit; }
 
 @media print {
   @page board-export { size: A4 landscape; margin: 10mm; }
-  @page performance-export { size: A4 portrait; margin: 14mm; }
+  @page performance-export { size: A4 portrait; margin: 0; }
   body { background: white !important; }
   .app-shell-sidebar, .app-shell-header, .app-shell-mobile-nav, .analysis-screen { display: none !important; }
   .app-shell-workspace { padding-left: 0 !important; }
@@ -391,7 +391,8 @@ button, input { font: inherit; }
   .board-print-page h1 { margin: 0; font-size: 16pt; font-weight: 700; }
   .board-print-page p { margin: 1mm 0 4mm; color: #626977; font-size: 9pt; }
   .board-print-page img { display: block; width: 100%; max-height: 163mm; object-fit: contain; border: 1px solid #ddd; }
-  .performance-print-document { page: performance-export; display: block; color: #172033; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .performance-print-document { page: performance-export; display: block; min-height: 297mm; padding: 14mm 14mm 18mm; color: #172033; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .performance-print-footer { position: fixed; bottom: 6mm; left: 14mm; color: #697386; font-size: 8pt; letter-spacing: .04em; }
   .performance-print-document .card { break-inside: avoid; }
   .performance-print-document table { font-size: 8.5pt; }
   .performance-print-document tr { break-inside: avoid; }
