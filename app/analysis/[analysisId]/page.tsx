@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { AnalysisBreakdown, AnalysisOverview } from "@/components/analysis/analysis-report";
 import { Button } from "@/components/ui/button";
+import { buildResultOverview } from "@/lib/domain/analysis-performance";
 import { readTopicTestAnalysis } from "@/lib/server/analyses/analysis-service";
 import { requireRolePage } from "@/lib/server/auth/viewer-service";
 
@@ -27,7 +28,7 @@ export default async function AnalysisResultPage({ params }: { params: Promise<{
           <div className="flex flex-wrap gap-2"><Button asChild variant="outline"><Link href="/analysis"><ArrowLeft />All results</Link></Button><Button asChild><Link href="/topics">Start a topic test<ArrowRight /></Link></Button></div>
         </header>
 
-        <AnalysisOverview result={result} label={`${result.mode} result`} />
+        <AnalysisOverview overview={buildResultOverview(result, `${result.mode} result`)} />
         <AnalysisBreakdown result={result} />
       </main>
     </AppShell>

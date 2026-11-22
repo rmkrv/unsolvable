@@ -1,31 +1,26 @@
 import { BarChart3, CheckCircle2, TrendingUp, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { AnalysisOverviewData } from "@/lib/domain/analysis-performance";
 import type { SavedTopicTestAnalysis } from "@/lib/server/analyses/analysis-repository";
 
-export function AnalysisOverview({ result, label = "Latest result", strengths = result.analysis.strengths, improvements = result.analysis.improvements }: {
-  result: SavedTopicTestAnalysis;
-  label?: string;
-  strengths?: string[];
-  improvements?: string[];
-}) {
-  const { analysis } = result;
+export function AnalysisOverview({ overview }: { overview: AnalysisOverviewData }) {
   return (
     <section className="mt-7 grid gap-4 lg:grid-cols-[0.9fr_1.4fr]">
       <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card shadow-sm lg:min-h-[34.75rem]">
         <CardHeader>
-          <div className="flex items-center justify-between gap-4"><Badge variant="secondary">{label}</Badge><span className="truncate text-xs text-muted-foreground">{result.subtopic}</span></div>
-          <div className="mt-5 flex items-end gap-4"><span className="text-7xl font-semibold tracking-[-0.07em]">{analysis.grade}</span><span className="pb-2 text-lg text-muted-foreground">{analysis.score}/100</span></div>
-          <CardTitle className="mt-4 text-xl">{result.topicName}</CardTitle>
-          <CardDescription className="leading-6">{analysis.gradeReason}</CardDescription>
+          <div className="flex items-center justify-between gap-4"><Badge variant="secondary">{overview.label}</Badge><span className="truncate text-xs text-muted-foreground">{overview.context}</span></div>
+          <div className="mt-5 flex items-end gap-4"><span className="text-7xl font-semibold tracking-[-0.07em]">{overview.grade}</span><span className="pb-2 text-lg text-muted-foreground">{overview.score}/100</span></div>
+          <CardTitle className="mt-4 text-xl">{overview.title}</CardTitle>
+          <CardDescription className="leading-6">{overview.gradeReason}</CardDescription>
         </CardHeader>
       </Card>
 
       <Card className="shadow-sm lg:min-h-[34.75rem]">
-        <CardHeader><div className="flex size-10 items-center justify-center rounded-lg bg-muted"><BarChart3 size={19} /></div><CardTitle className="mt-3">Overall analysis</CardTitle><CardDescription className="leading-6">{analysis.summary}</CardDescription></CardHeader>
+        <CardHeader><div className="flex size-10 items-center justify-center rounded-lg bg-muted"><BarChart3 size={19} /></div><CardTitle className="mt-3">Overall analysis</CardTitle><CardDescription className="leading-6">{overview.summary}</CardDescription></CardHeader>
         <CardContent className="grid gap-5 sm:grid-cols-2">
-          <InsightList title="What you do well" icon={CheckCircle2} items={strengths} />
-          <InsightList title="What to improve" icon={TrendingUp} items={improvements} />
+          <InsightList title="What you do well" icon={CheckCircle2} items={overview.strengths} />
+          <InsightList title="What to improve" icon={TrendingUp} items={overview.improvements} />
         </CardContent>
       </Card>
     </section>

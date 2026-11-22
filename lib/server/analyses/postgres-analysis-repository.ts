@@ -41,6 +41,15 @@ export class PostgresAnalysisRepository implements AnalysisRepository {
     return rows.flatMap(toSavedAnalysis);
   }
 
+  async listAllForUser(userId: string): Promise<SavedTopicTestAnalysis[]> {
+    const rows = await this.db
+      .select()
+      .from(practiceSessions)
+      .where(and(eq(practiceSessions.userId, userId), isNotNull(practiceSessions.analysis)))
+      .orderBy(desc(practiceSessions.completedAt));
+    return rows.flatMap(toSavedAnalysis);
+  }
+
   async readForUser(userId: string, id: string): Promise<SavedTopicTestAnalysis | null> {
     const rows = await this.db
       .select()

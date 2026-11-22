@@ -16,5 +16,6 @@ export type SaveTopicTestAnalysisInput = SavedTopicTestAnalysis & { userId: stri
 export interface AnalysisRepository {
   saveForUser(input: SaveTopicTestAnalysisInput): Promise<SavedTopicTestAnalysis>;
   listForUser(userId: string, limit?: number): Promise<SavedTopicTestAnalysis[]>;
+  listAllForUser(userId: string): Promise<SavedTopicTestAnalysis[]>;
   readForUser(userId: string, id: string): Promise<SavedTopicTestAnalysis | null>;
 }

@@ -21,6 +21,11 @@ export function listTopicTestAnalyses(viewer: Viewer, limit = 50) {
   return getAnalysisRepository().listForUser(viewer.appUserId, limit);
 }
 
+export function listAllTopicTestAnalyses(viewer: Viewer) {
+  requireStudent(viewer);
+  return getAnalysisRepository().listAllForUser(viewer.appUserId);
+}
+
 export function readTopicTestAnalysis(viewer: Viewer, id: string) {
   requireStudent(viewer);
   return getAnalysisRepository().readForUser(viewer.appUserId, id);

@@ -71,12 +71,12 @@ export function StudentShell({
 }) {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-border bg-muted/45 lg:flex lg:flex-col">
+      <aside className="app-shell-sidebar fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-border bg-muted/45 lg:flex lg:flex-col">
         <SidebarContent active={active} />
       </aside>
 
-      <div className="min-h-screen lg:pl-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-xl sm:px-7">
+      <div className="app-shell-workspace min-h-screen lg:pl-64">
+        <header className="app-shell-header sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur-xl sm:px-7">
           <div className="flex items-center gap-3">
             <Sheet>
               <SheetTrigger asChild>
@@ -111,9 +111,9 @@ export function StudentShell({
           </div>
         </header>
 
-        <main className="app-page-enter min-w-0 pb-24 lg:pb-8">{children}</main>
+        <main className="app-shell-content app-page-enter min-w-0 pb-24 lg:pb-8">{children}</main>
 
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-7 border-t border-border bg-background/95 px-1 backdrop-blur-xl lg:hidden" aria-label="Primary navigation">
+        <nav className="app-shell-mobile-nav fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-7 border-t border-border bg-background/95 px-1 backdrop-blur-xl lg:hidden" aria-label="Primary navigation">
           {navigation.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
